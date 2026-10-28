@@ -2,6 +2,7 @@
 // views/login.php - Autenticação com sessão salva no banco de dados MySQL
 
 require_once __DIR__ . '/../config/session.php';
+iniciarSessaoWeb();
 
 // Se já estiver logado, redireciona
 if (obterUsuarioAutenticado()) {
