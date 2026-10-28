@@ -6,11 +6,11 @@ Sistema web completo para controle de lavanderia por departamentos e peças, des
 
 ## Configuração do MySQL
 
-1. Copie `config/database.local.example.php` para `config/database.local.php`.
-2. Preencha host, nome do banco, usuário e senha em `config/database.local.php`. Esse arquivo é ignorado pelo Git para evitar publicar credenciais.
+1. Preencha `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASSWORD` no arquivo `.env` local, que é ignorado pelo Git.
+2. Como alternativa, copie `config/database.local.example.php` para `config/database.local.php` e preencha as credenciais; esse arquivo também é ignorado pelo Git.
 3. Habilite a extensão `pdo_mysql` do PHP e confirme que as tabelas do `database/mysql_schema.sql` já existem no banco.
 
-O aplicativo conecta ao MySQL configurado e não cria nem altera tabelas automaticamente.
+O aplicativo prioriza as variáveis de ambiente do servidor, depois o arquivo `.env` local e, por fim, `config/database.local.php`. O `.env` não é enviado à Vercel; cadastre as mesmas variáveis nas configurações do projeto. O aplicativo conecta ao MySQL configurado e não cria nem altera tabelas automaticamente.
 
 ### Deploy na Vercel
 

@@ -47,6 +47,7 @@ if ($isPage) {
         exit('Página não encontrada.');
     }
 
+    header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
     $_SERVER['PHP_SELF'] = '/' . $relativePath;
     $_SERVER['SCRIPT_NAME'] = '/' . $relativePath;
     require $targetFile;

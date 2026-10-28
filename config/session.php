@@ -50,16 +50,36 @@ function iniciarSessaoWeb() {
         return;
     }
 
-    session_set_cookie_params([
+    $httpsForwarded = strtolower(trim(explode(',', $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')[0])) === 'https';
+    $cookieParams = [
         'lifetime' => 0,
         'path' => '/',
-        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $httpsForwarded,
         'httponly' => true,
         'samesite' => 'Lax'
-    ]);
+    ];
+    session_set_cookie_params($cookieParams);
     ini_set('session.gc_maxlifetime', (string)(SESSION_LIFETIME_HOURS * 3600));
     session_set_save_handler(new MySqlPhpSessionHandler(getDB()), true);
     session_start();
+
+    $cookieHeaderSent = false;
+    foreach (headers_list() as $header) {
+        if (stripos($header, 'Set-Cookie: ' . session_name() . '=') === 0) {
+            $cookieHeaderSent = true;
+            break;
+        }
+    }
+    if (!$cookieHeaderSent && !headers_sent()) {
+        $cookieOptions = $cookieParams;
+        unset($cookieOptions['lifetime']);
+        $cookieOptions['expires'] = 0;
+        setcookie(session_name(), session_id(), $cookieOptions);
+    }
+
+    if (!headers_sent()) {
+        header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+    }
 }
 
 function tokenCsrfAtual() {

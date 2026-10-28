@@ -4,19 +4,55 @@
 function getDB() {
     static $pdo = null;
     if ($pdo === null) {
+        $dotenvPath = dirname(__DIR__) . '/.env';
+        $dotenvValues = [];
+        if (is_file($dotenvPath)) {
+            $lines = file($dotenvPath, FILE_IGNORE_NEW_LINES);
+            if ($lines === false) {
+                throw new RuntimeException('Não foi possível ler o arquivo .env.');
+            }
+
+            foreach ($lines as $lineNumber => $line) {
+                $line = trim($line);
+                if ($line === '' || str_starts_with($line, '#')) {
+                    continue;
+                }
+                if (!preg_match('/\A([A-Z][A-Z0-9_]*)=(.*)\z/', $line, $matches)) {
+                    throw new RuntimeException('Linha inválida no arquivo .env: ' . ($lineNumber + 1) . '.');
+                }
+
+                $value = trim($matches[2]);
+                if (
+                    strlen($value) >= 2
+                    && (($value[0] === '"' && substr($value, -1) === '"')
+                        || ($value[0] === "'" && substr($value, -1) === "'"))
+                ) {
+                    $value = substr($value, 1, -1);
+                } elseif (
+                    ($value !== '' && ($value[0] === '"' || $value[0] === "'"))
+                    || ($value !== '' && (substr($value, -1) === '"' || substr($value, -1) === "'"))
+                ) {
+                    throw new RuntimeException('Aspas não fechadas no arquivo .env na linha ' . ($lineNumber + 1) . '.');
+                }
+
+                $dotenvValues[$matches[1]] = $value;
+            }
+        }
+
         $localConfigPath = __DIR__ . '/database.local.php';
         $localConfig = is_file($localConfigPath) ? require $localConfigPath : [];
         if (!is_array($localConfig)) {
             throw new RuntimeException('A configuração local do banco deve retornar um array.');
         }
 
-        $host = getenv('DB_HOST') ?: ($localConfig['host'] ?? '');
-        $database = getenv('DB_NAME') ?: ($localConfig['name'] ?? '');
-        $username = getenv('DB_USER') ?: ($localConfig['user'] ?? '');
+        $host = getenv('DB_HOST');
+        $host = $host !== false ? $host : ($dotenvValues['DB_HOST'] ?? ($localConfig['host'] ?? ''));
+        $database = getenv('DB_NAME');
+        $database = $database !== false ? $database : ($dotenvValues['DB_NAME'] ?? ($localConfig['name'] ?? ''));
+        $username = getenv('DB_USER');
+        $username = $username !== false ? $username : ($dotenvValues['DB_USER'] ?? ($localConfig['user'] ?? ''));
         $password = getenv('DB_PASSWORD');
-        if ($password === false) {
-            $password = $localConfig['password'] ?? '';
-        }
+        $password = $password !== false ? $password : ($dotenvValues['DB_PASSWORD'] ?? ($localConfig['password'] ?? ''));
 
         if ($host === '' || $database === '' || $username === '') {
             throw new RuntimeException(
