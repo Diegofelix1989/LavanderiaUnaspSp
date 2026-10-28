@@ -6,6 +6,7 @@
 /database/*.sqlite
 /database/*.sqlite3
 /database/backups/
+/database/mysql_migracao_local.sql
 
 # Arquivos enviados pelos usuários (avatares e logotipos)
 /uploads/avatars/*
