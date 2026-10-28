@@ -1,5 +1,5 @@
 <?php
-// views/login.php - Autenticação com sessão salva no banco de dados SQLite
+// views/login.php - Autenticação com sessão salva no banco de dados MySQL
 
 require_once __DIR__ . '/../config/session.php';
 
@@ -32,7 +32,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             if (isset($usuario['status']) && (int)$usuario['status'] === 0) {
                 $erro = 'Este usuário está inativo no sistema. Contate o administrador.';
             } else {
-                // Cria a sessão na tabela 'sessoes' do SQLite
+                // Cria a sessão na tabela 'sessoes' do MySQL
                 iniciarSessaoUsuario($usuario);
                 definirAlerta('success', 'Bem-vindo de volta, ' . $usuario['nome'] . '!');
                 header('Location: lancamentos.php');
@@ -161,4 +161,3 @@ document.getElementById('btnAutoPreencher').addEventListener('click', function()
 
 </body>
 </html>
-

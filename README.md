@@ -1,6 +1,25 @@
-# 🧺 Sistema de Lavanderia (PHP + SQLite)
+# 🧺 Sistema de Lavanderia (PHP + MySQL)
 
-Sistema web completo para controle de lavanderia por departamentos e peças, desenvolvido em **PHP** com banco de dados **SQLite**, controle de sessão em banco e retenção na lixeira por 60 dias.
+Sistema web completo para controle de lavanderia por departamentos e peças, desenvolvido em **PHP** com banco de dados **MySQL**, controle de sessão em banco e retenção na lixeira por 60 dias.
+
+---
+
+## Configuração do MySQL
+
+1. Copie `config/database.local.example.php` para `config/database.local.php`.
+2. Preencha host, nome do banco, usuário e senha em `config/database.local.php`. Esse arquivo é ignorado pelo Git para evitar publicar credenciais.
+3. Habilite a extensão `pdo_mysql` do PHP e confirme que as tabelas do `database/mysql_schema.sql` já existem no banco.
+
+O aplicativo conecta ao MySQL configurado e não cria nem altera tabelas automaticamente.
+
+### Deploy na Vercel
+
+1. Importe este repositório na Vercel; o `vercel.json` configura o runtime PHP e encaminha as páginas para `api/index.php`.
+2. Execute uma vez o arquivo `database/mysql_migracao_vercel.sql` no banco remoto para habilitar sessões PHP compartilhadas entre funções.
+3. Em **Settings → Environment Variables**, configure `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASSWORD` para Production, Preview e/ou Development.
+4. Faça um novo deploy após salvar as variáveis.
+
+O roteador publica as páginas em `views/` e os arquivos estáticos do projeto em `assets/`, bloqueando acesso direto às pastas internas. A pasta `uploads/` é excluída do deploy e o filesystem das funções da Vercel não é armazenamento persistente; avatares e logotipos enviados pela aplicação precisam de um serviço de armazenamento externo para funcionar de forma persistente.
 
 ---
 
@@ -55,8 +74,8 @@ O sistema conta com **3 visões analíticas completas**, acessíveis pelas abas 
   * **Exportação para CSV:** Gera o arquivo de planilha compatível com Excel referente ao modelo ativo na tela.
   * **Impressão / PDF:** Layout profissional limpo via `window.print()`.
 
-### 4. 🗄️ Controle de Sessão no Banco de Dados SQLite
-* As sessões dos usuários são gravadas na tabela `sessoes` no SQLite, rastreando token seguro, IP do cliente, navegador (User Agent), data do último acesso e expiração.
+### 4. 🗄️ Controle de Sessão no Banco de Dados MySQL
+* As sessões de autenticação são gravadas na tabela `sessoes`; os dados de sessão do PHP (incluindo o token CSRF) são gravados em `sessoes_php`, permitindo que instâncias serverless compartilhem o estado.
 * Na tela de perfil, o usuário pode ver todos os dispositivos conectados e encerrar outras sessões remotamente.
 
 ### 5. 🗑️ Lixeira com Retenção de 60 Dias
@@ -72,8 +91,8 @@ O sistema conta com **3 visões analíticas completas**, acessíveis pelas abas 
 ```text
 lavanderia/
 ├── config/
-│   ├── database.php        # Conexão SQLite, tabelas e auto-seed inicial
-│   └── session.php         # Controle de sessão persistida no SQLite
+│   ├── database.php        # Conexão MySQL e auto-seed inicial
+│   └── session.php         # Controle de sessão persistida no MySQL
 ├── includes/
 │   ├── auth.php            # Middleware de autenticação
 │   ├── header.php          # Topbar, alertas e layout
@@ -90,9 +109,10 @@ lavanderia/
 │   ├── produtos.php        # Cadastro de peças e valores
 │   ├── relatorios.php      # Relatório por departamento conforme imagem 2
 │   ├── lixeira.php         # Lixeira com política de 60 dias
-│   └── perfil.php          # Perfil e monitor de sessões SQLite
+│   └── perfil.php          # Perfil e monitor de sessões MySQL
 ├── database/
-│   └── lavanderia.db       # Banco de dados local SQLite
+│   ├── mysql_schema.sql    # Schema do banco MySQL
+│   └── mysql_migracao_local.sql
 ├── iniciar_servidor.bat    # Executável para iniciar no Windows
 └── index.php               # Roteamento inicial
 ```

@@ -41,7 +41,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     } elseif ($acao === 'deletar') {
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE produtos SET deleted_at = datetime('now', 'localtime') WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE produtos SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?");
             $stmt->execute([$id]);
             definirAlerta('warning', 'Peça movida para a Lixeira.');
         }

@@ -1,0 +1,10 @@
+.env
+.env.*
+config/database.local.php
+database/*.db
+database/*.db-*
+database/*.sqlite
+database/*.sqlite3
+database/backups/
+database/mysql_migracao_local.sql
+uploads/

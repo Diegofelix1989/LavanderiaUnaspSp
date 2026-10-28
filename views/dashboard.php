@@ -148,14 +148,14 @@ $fimAno    = sprintf('%04d-12-31', $anoSel);
 
 $stmtMensal = $pdo->prepare("
     SELECT
-        strftime('%m', data_lancamento) AS mes,
+        DATE_FORMAT(data_lancamento, '%m') AS mes,
         COALESCE(SUM(valor_total), 0) AS valor_mes,
         COUNT(*) AS count_mes
     FROM lancamentos l
     WHERE l.deleted_at IS NULL
       AND l.data_lancamento BETWEEN ? AND ?
       {$filtrosLancamentosSql}
-    GROUP BY strftime('%m', l.data_lancamento)
+    GROUP BY DATE_FORMAT(l.data_lancamento, '%m')
     ORDER BY mes ASC
 ");
 $stmtMensal->execute(array_merge([$inicioAno, $fimAno], $paramsFiltros));
@@ -196,8 +196,8 @@ $totalDeps = (int)$pdo->query("SELECT COUNT(*) FROM departamentos WHERE deleted_
 // ── Gerar lista de meses/anos para o filtro ──────────────────────────────────
 $stmtMeses = $pdo->query("
     SELECT DISTINCT
-        strftime('%Y', data_lancamento) AS ano,
-        strftime('%m', data_lancamento) AS mes
+        DATE_FORMAT(data_lancamento, '%Y') AS ano,
+        DATE_FORMAT(data_lancamento, '%m') AS mes
     FROM lancamentos
     WHERE deleted_at IS NULL
     ORDER BY ano DESC, mes DESC

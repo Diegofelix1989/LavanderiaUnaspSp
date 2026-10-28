@@ -90,7 +90,7 @@ if ($tipoPeriodo === 'intervalo' && ($dataInicio === '' || $dataFim === '')) {
 
 // Meses disponíveis com lançamentos
 $mesesDisponiveis = $pdo->query("
-    SELECT DISTINCT strftime('%Y-%m', data_lancamento) as ym 
+    SELECT DISTINCT DATE_FORMAT(data_lancamento, '%Y-%m') as ym
     FROM lancamentos 
     WHERE deleted_at IS NULL 
     ORDER BY ym DESC
@@ -105,7 +105,7 @@ $carregarDiasRelatorio = static function (string $mes) use ($pdo, $depFiltro, $p
                COALESCE(SUM(l.valor_total), 0) AS valor_total
         FROM lancamentos l
         WHERE l.deleted_at IS NULL
-          AND strftime('%Y-%m', l.data_lancamento) = ?
+          AND DATE_FORMAT(l.data_lancamento, '%Y-%m') = ?
     ";
     $params = [$mes];
 
@@ -185,7 +185,7 @@ if ($tipoPeriodo === 'dia') {
     $dataFim = '';
     if ($mesSel === '') {
         $mesAtual = date('Y-m');
-        $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM lancamentos WHERE deleted_at IS NULL AND strftime('%Y-%m', data_lancamento) = ?");
+        $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM lancamentos WHERE deleted_at IS NULL AND DATE_FORMAT(data_lancamento, '%Y-%m') = ?");
         $stmtCheck->execute([$mesAtual]);
         if ($stmtCheck->fetchColumn() > 0 || empty($mesesDisponiveis)) {
             $mesSel = $mesAtual;
@@ -193,7 +193,7 @@ if ($tipoPeriodo === 'dia') {
             $mesSel = $mesesDisponiveis[0] ?? $mesAtual;
         }
     }
-    $whereData = "strftime('%Y-%m', l.data_lancamento) = ?";
+    $whereData = "DATE_FORMAT(l.data_lancamento, '%Y-%m') = ?";
     $paramsData = [$mesSel];
 
     $partesData = explode('-', $mesSel);

@@ -1,10 +1,49 @@
 <?php
-// config/session.php - Gestão de autenticação e sessões persistidas no SQLite
+// config/session.php - Gestão de autenticação e sessões persistidas no MySQL
 
 require_once __DIR__ . '/database.php';
 
 define('SESSION_COOKIE_NAME', 'lavanderia_session');
 define('SESSION_LIFETIME_HOURS', 12);
+
+final class MySqlPhpSessionHandler implements SessionHandlerInterface {
+    public function __construct(private PDO $pdo) {}
+
+    public function open(string $path, string $name): bool {
+        return true;
+    }
+
+    public function close(): bool {
+        return true;
+    }
+
+    public function read(string $id): string|false {
+        $stmt = $this->pdo->prepare("SELECT dados FROM sessoes_php WHERE id = ?");
+        $stmt->execute([$id]);
+        $data = $stmt->fetchColumn();
+        return $data === false ? '' : $data;
+    }
+
+    public function write(string $id, string $data): bool {
+        $stmt = $this->pdo->prepare("
+            INSERT INTO sessoes_php (id, dados, atualizado_em)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE dados = VALUES(dados), atualizado_em = VALUES(atualizado_em)
+        ");
+        return $stmt->execute([$id, $data, time()]);
+    }
+
+    public function destroy(string $id): bool {
+        $stmt = $this->pdo->prepare("DELETE FROM sessoes_php WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+
+    public function gc(int $maxLifetime): int|false {
+        $stmt = $this->pdo->prepare("DELETE FROM sessoes_php WHERE atualizado_em < ?");
+        $stmt->execute([time() - $maxLifetime]);
+        return $stmt->rowCount();
+    }
+}
 
 function iniciarSessaoWeb() {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -18,6 +57,8 @@ function iniciarSessaoWeb() {
         'httponly' => true,
         'samesite' => 'Lax'
     ]);
+    ini_set('session.gc_maxlifetime', (string)(SESSION_LIFETIME_HOURS * 3600));
+    session_set_save_handler(new MySqlPhpSessionHandler(getDB()), true);
     session_start();
 }
 
@@ -50,7 +91,7 @@ function iniciarSessaoUsuario($usuario) {
 
     $stmt = $pdo->prepare("
         INSERT INTO sessoes (id, usuario_id, ip_address, user_agent, ultimo_acesso, expira_em)
-        VALUES (?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime', '+" . SESSION_LIFETIME_HOURS . " hours'))
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL " . SESSION_LIFETIME_HOURS . " HOUR))
     ");
     $stmt->execute([$token, $usuario['id'], $ip, $userAgent]);
 
@@ -89,7 +130,7 @@ function obterUsuarioAutenticado() {
                COALESCE(u.tema, 'claro') as tema, s.id as token_sessao, s.ultimo_acesso
         FROM sessoes s
         JOIN usuarios u ON u.id = s.usuario_id
-        WHERE s.id = ? AND s.expira_em > datetime('now', 'localtime')
+        WHERE s.id = ? AND s.expira_em > CURRENT_TIMESTAMP
     ");
     $stmt->execute([$token]);
     $user = $stmt->fetch();
@@ -104,8 +145,8 @@ function obterUsuarioAutenticado() {
         // Renova o último acesso da sessão no banco
         $stmtUpdate = $pdo->prepare("
             UPDATE sessoes 
-            SET ultimo_acesso = datetime('now', 'localtime'),
-                expira_em = datetime('now', 'localtime', '+" . SESSION_LIFETIME_HOURS . " hours')
+            SET ultimo_acesso = CURRENT_TIMESTAMP,
+                expira_em = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL " . SESSION_LIFETIME_HOURS . " HOUR)
             WHERE id = ?
         ");
         $stmtUpdate->execute([$token]);
@@ -150,7 +191,7 @@ function listarSessoesUsuario($usuarioId) {
     $stmt = $pdo->prepare("
         SELECT id, ip_address, user_agent, ultimo_acesso, expira_em
         FROM sessoes
-        WHERE usuario_id = ? AND expira_em > datetime('now', 'localtime')
+        WHERE usuario_id = ? AND expira_em > CURRENT_TIMESTAMP
         ORDER BY ultimo_acesso DESC
     ");
     $stmt->execute([$usuarioId]);

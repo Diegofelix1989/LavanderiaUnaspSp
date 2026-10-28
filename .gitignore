@@ -17,6 +17,7 @@
 # Configurações e arquivos locais
 .env
 .env.*
+/config/database.local.php
 *.log
 *.bak
 *.old

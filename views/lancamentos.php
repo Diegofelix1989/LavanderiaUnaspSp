@@ -156,7 +156,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         // Envia para a Lixeira (Soft Delete)
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE lancamentos SET deleted_at = datetime('now', 'localtime') WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE lancamentos SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?");
             $stmt->execute([$id]);
             definirAlerta('warning', 'Lançamento movido para a Lixeira. Ele ficará guardado por 60 dias.');
         }
@@ -205,7 +205,7 @@ if ($filtroData !== '') {
     $sqlWhere .= " AND l.data_lancamento = ?";
     $params[] = $filtroData;
 } elseif ($filtroMes !== '') {
-    $sqlWhere .= " AND strftime('%Y-%m', l.data_lancamento) = ?";
+    $sqlWhere .= " AND DATE_FORMAT(l.data_lancamento, '%Y-%m') = ?";
     $params[] = $filtroMes;
 }
 
@@ -219,7 +219,7 @@ $carregarDiasCalendario = function (string $mes) use ($pdo, $whereBase, $paramsB
         FROM lancamentos l
         LEFT JOIN departamentos d ON d.id = l.departamento_id
         LEFT JOIN produtos p ON p.id = l.produto_id
-        WHERE $whereBase AND strftime('%Y-%m', l.data_lancamento) = ?
+        WHERE $whereBase AND DATE_FORMAT(l.data_lancamento, '%Y-%m') = ?
         GROUP BY l.data_lancamento
     ");
     $stmt->execute(array_merge($paramsBase, [$mes]));
@@ -238,7 +238,7 @@ $carregarDiasCalendario = function (string $mes) use ($pdo, $whereBase, $paramsB
 $mesCalendario = $filtroData !== '' ? substr($filtroData, 0, 7) : $filtroMes;
 if ($mesCalendario === '') {
     $stmtUltimoMes = $pdo->query("
-        SELECT strftime('%Y-%m', MAX(data_lancamento))
+        SELECT DATE_FORMAT(MAX(data_lancamento), '%Y-%m')
         FROM lancamentos
         WHERE deleted_at IS NULL
     ");

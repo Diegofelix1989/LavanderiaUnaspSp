@@ -2,16 +2,8 @@
 -- Sistema de Lavanderia - Schema MySQL
 -- Compatível com MySQL 5.7+/8.0+ e MariaDB 10.4+
 --
--- Observação: o código PHP atual ainda usa SQLite. Este script
--- cria a estrutura no MySQL; a conexão e as consultas do sistema
--- precisam ser adaptadas para MySQL na próxima etapa.
+-- O aplicativo usa MySQL e espera que este schema esteja provisionado.
 -- ============================================================
-
-CREATE DATABASE IF NOT EXISTS `lavanderia`
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE `lavanderia`;
 
 SET NAMES utf8mb4;
 
@@ -21,7 +13,7 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `usuarios` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(255) NOT NULL,
-    `email` VARCHAR(255) NOT NULL,
+    `email` VARCHAR(191) NOT NULL,
     `senha` VARCHAR(255) NOT NULL,
     `cargo` VARCHAR(100) NOT NULL DEFAULT 'Operador',
     `avatar` VARCHAR(255) NOT NULL DEFAULT '',
@@ -52,12 +44,21 @@ CREATE TABLE IF NOT EXISTS `sessoes` (
         ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Armazenamento da sessão PHP compartilhado entre execuções serverless
+CREATE TABLE IF NOT EXISTS `sessoes_php` (
+    `id` VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    `dados` MEDIUMBLOB NOT NULL,
+    `atualizado_em` INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_sessoes_php_atualizado` (`atualizado_em`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ------------------------------------------------------------
 -- Departamentos
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `departamentos` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `nome` VARCHAR(255) NOT NULL,
+    `nome` VARCHAR(191) NOT NULL,
     `criado_em` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `deleted_at` DATETIME NULL DEFAULT NULL,
     PRIMARY KEY (`id`),
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS `departamentos` (
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `produtos` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `nome` VARCHAR(255) NOT NULL,
+    `nome` VARCHAR(191) NOT NULL,
     `valor_padrao` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     `criado_em` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `deleted_at` DATETIME NULL DEFAULT NULL,

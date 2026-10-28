@@ -246,7 +246,7 @@ $sql = "
         u.criado_em,
         (SELECT COUNT(*) FROM lancamentos l WHERE l.usuario_id = u.id AND l.deleted_at IS NULL) as total_lancamentos,
         (SELECT MAX(s.ultimo_acesso) FROM sessoes s WHERE s.usuario_id = u.id) as ultimo_acesso,
-        (SELECT COUNT(*) FROM sessoes s WHERE s.usuario_id = u.id AND s.expira_em > datetime('now', 'localtime')) as sessoes_ativas
+        (SELECT COUNT(*) FROM sessoes s WHERE s.usuario_id = u.id AND s.expira_em > CURRENT_TIMESTAMP) as sessoes_ativas
     FROM usuarios u
     WHERE 1=1
 ";
@@ -293,7 +293,7 @@ $stats = $stmtStats->fetch() ?: ['total' => 0, 'ativos' => 0, 'inativos' => 0];
 $stmtSessoesAtivas = $pdo->query("
     SELECT COUNT(DISTINCT usuario_id) 
     FROM sessoes 
-    WHERE expira_em > datetime('now', 'localtime')
+    WHERE expira_em > CURRENT_TIMESTAMP
 ");
 $totalOnline = (int)$stmtSessoesAtivas->fetchColumn();
 

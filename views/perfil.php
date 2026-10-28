@@ -294,7 +294,7 @@ $temFotoPersonalizada = !empty($currentUser['avatar']) && file_exists(__DIR__ . 
         </div>
     </div>
 
-    <!-- Card Controle de Sessões no Banco SQLite -->
+    <!-- Card Controle de Sessões no Banco MySQL -->
     <div class="card" style="border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
         <div class="card-header" style="padding: 14px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
             <div class="card-title" style="font-size: 0.95rem; font-weight: 700; color: #1e293b;">
