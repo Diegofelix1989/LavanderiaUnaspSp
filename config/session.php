@@ -63,18 +63,14 @@ function iniciarSessaoWeb() {
     session_set_save_handler(new MySqlPhpSessionHandler(getDB()), true);
     session_start();
 
-    $cookieHeaderSent = false;
-    foreach (headers_list() as $header) {
-        if (stripos($header, 'Set-Cookie: ' . session_name() . '=') === 0) {
-            $cookieHeaderSent = true;
-            break;
-        }
-    }
-    if (!$cookieHeaderSent && !headers_sent()) {
-        $cookieOptions = $cookieParams;
-        unset($cookieOptions['lifetime']);
-        $cookieOptions['expires'] = 0;
-        setcookie(session_name(), session_id(), $cookieOptions);
+    if (!headers_sent()) {
+        setcookie(session_name(), session_id(), [
+            'expires' => 0,
+            'path' => '/',
+            'secure' => $cookieParams['secure'],
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
     }
 
     if (!headers_sent()) {
