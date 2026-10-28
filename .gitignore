@@ -1,0 +1,23 @@
+# Banco de dados local e backups (não publicar dados de usuários)
+/database/*.db
+/database/*.db-journal
+/database/*.db-wal
+/database/*.db-shm
+/database/*.sqlite
+/database/*.sqlite3
+/database/backups/
+
+# Arquivos enviados pelos usuários (avatares e logotipos)
+/uploads/avatars/*
+!/uploads/avatars/.gitkeep
+/uploads/logos/*
+!/uploads/logos/.gitkeep
+
+# Configurações e arquivos locais
+.env
+.env.*
+*.log
+*.bak
+*.old
+.DS_Store
+Thumbs.db

@@ -1,0 +1,31 @@
+# ==========================================================
+# Segurança do sistema - Lavanderia
+# ==========================================================
+
+# Impede a listagem automática do conteúdo de qualquer diretório
+Options -Indexes
+
+# Define os arquivos de entrada padrão
+DirectoryIndex index.php index.html
+
+# Bloqueia download de banco de dados, dumps, logs e arquivos sensíveis
+<FilesMatch "\.(db|sqlite|sqlite3|sql|log|ini|env|bak|old|backup|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Bloqueia acesso a arquivos e pastas ocultos (ex.: .git, .env)
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
