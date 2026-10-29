@@ -62,7 +62,7 @@ export default async function handler(request, response) {
     if (body.action === 'upload') {
       if (
         typeof body.pathname !== 'string'
-        || !/^(avatars\/[0-9]+|logos)\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|gif|webp)$/i.test(body.pathname)
+        || !/^(avatars|logos)\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|gif|webp)$/i.test(body.pathname)
         || typeof body.data !== 'string'
         || body.data.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 4
       ) {
