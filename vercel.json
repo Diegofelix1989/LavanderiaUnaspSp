@@ -7,6 +7,10 @@
   },
   "routes": [
     {
+      "src": "/api/blob",
+      "dest": "/api/blob.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/api/index.php"
     }

@@ -18,6 +18,7 @@
 .env
 .env.*
 /config/database.local.php
+/node_modules/
 *.log
 *.bak
 *.old

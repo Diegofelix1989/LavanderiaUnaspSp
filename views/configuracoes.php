@@ -14,24 +14,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if ($acao === 'salvar_logo') {
         $base64Data = $_POST['logo_base64'] ?? '';
         if (preg_match('/^data:image\/(jpeg|png|webp|gif);base64,(.+)$/', $base64Data, $matches)) {
-            $ext    = ($matches[1] === 'png') ? 'png' : 'jpg';
-            $binary = base64_decode($matches[2]);
+            $mime = $matches[1] === 'jpeg' ? 'image/jpeg' : 'image/' . $matches[1];
+            $ext = $matches[1] === 'jpeg' ? 'jpg' : $matches[1];
+            $binary = base64_decode($matches[2], true);
             if ($binary && strlen($binary) <= 2 * 1024 * 1024) {
-                $dirLogos = __DIR__ . '/../uploads/logos';
-                if (!is_dir($dirLogos)) { mkdir($dirLogos, 0755, true); }
                 $config = obterConfiguracoes();
-                if (!empty($config['sistema_logo'])) {
-                    $old = __DIR__ . '/../' . $config['sistema_logo'];
-                    if (file_exists($old)) { @unlink($old); }
-                }
-                $nome = 'logo_' . time() . '.' . $ext;
-                $rel  = 'uploads/logos/' . $nome;
-                $abs  = $dirLogos . '/' . $nome;
-                if (file_put_contents($abs, $binary)) {
-                    salvarConfiguracao('sistema_logo', $rel);
-                    definirAlerta('success', 'Logo atualizado com sucesso!');
-                } else {
-                    definirAlerta('danger', 'Nao foi possivel salvar o arquivo.');
+                try {
+                    $nome = 'logo_' . bin2hex(random_bytes(12)) . '.' . $ext;
+                    $rel = storeImage($binary, 'logos', $nome, $mime);
+                    if (!salvarConfiguracao('sistema_logo', $rel)) {
+                        throw new RuntimeException('Não foi possível salvar a configuração do logo.');
+                    }
+                    $alertType = 'success';
+                    $alertMessage = 'Logo atualizado com sucesso!';
+                    if (!empty($config['sistema_logo']) && $config['sistema_logo'] !== $rel) {
+                        try {
+                            deleteStoredImage($config['sistema_logo']);
+                        } catch (Throwable $e) {
+                            error_log('Falha ao remover logo antigo: ' . $e->getMessage());
+                            $alertType = 'warning';
+                            $alertMessage = 'O logo foi atualizado, mas não foi possível remover o arquivo antigo.';
+                        }
+                    }
+                    definirAlerta($alertType, $alertMessage);
+                } catch (Throwable $e) {
+                    error_log('Falha ao salvar logo: ' . $e->getMessage());
+                    definirAlerta('danger', 'Não foi possível salvar o logo. Verifique a conexão com o armazenamento Blob.');
                 }
             } else { definirAlerta('danger', 'Arquivo invalido ou maior que 2MB.'); }
         } else { definirAlerta('danger', 'Dados do logo nao recebidos.'); }
@@ -39,12 +47,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     } elseif ($acao === 'remover_logo') {
         $config = obterConfiguracoes();
-        if (!empty($config['sistema_logo'])) {
-            $old = __DIR__ . '/../' . $config['sistema_logo'];
-            if (file_exists($old)) { @unlink($old); }
+        try {
+            if (!salvarConfiguracao('sistema_logo', '')) {
+                throw new RuntimeException('Não foi possível remover o logo das configurações.');
+            }
+            $alertType = 'info';
+            $alertMessage = 'Logo removido. O icone padrao sera exibido.';
+            if (!empty($config['sistema_logo'])) {
+                try {
+                    deleteStoredImage($config['sistema_logo']);
+                } catch (Throwable $e) {
+                    error_log('Falha ao remover arquivo do logo: ' . $e->getMessage());
+                    $alertType = 'warning';
+                    $alertMessage = 'O logo foi removido das configurações, mas o arquivo antigo não pôde ser excluído.';
+                }
+            }
+            definirAlerta($alertType, $alertMessage);
+        } catch (Throwable $e) {
+            error_log('Falha ao remover logo: ' . $e->getMessage());
+            definirAlerta('danger', 'Não foi possível remover o logo.');
         }
-        salvarConfiguracao('sistema_logo', '');
-        definirAlerta('info', 'Logo removido. O icone padrao sera exibido.');
         header('Location: configuracoes.php'); exit;
 
     } elseif ($acao === 'salvar_textos') {
@@ -82,7 +104,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 require_once __DIR__ . '/../includes/header.php';
 $config  = obterConfiguracoes();
-$temLogo = !empty($config['sistema_logo']) && file_exists(__DIR__ . '/../' . $config['sistema_logo']);
+$temLogo = storedImageExists($config['sistema_logo'] ?? '');
 ?>
 <style>
 .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: flex-start; }
@@ -122,7 +144,7 @@ $temLogo = !empty($config['sistema_logo']) && file_exists(__DIR__ . '/../' . $co
         <div class="card-body" style="padding: 24px; text-align: center;">
             <div class="logo-preview-wrap" id="logoPreviewWrap">
                 <?php if ($temLogo): ?>
-                    <img id="logoPreviewImg" src="../<?= htmlspecialchars($config['sistema_logo']) ?>?v=<?= filemtime(__DIR__ . '/../' . $config['sistema_logo']) ?>" alt="Logo">
+                    <img id="logoPreviewImg" src="<?= htmlspecialchars(storedImageSrc($config['sistema_logo']), ENT_QUOTES, 'UTF-8') ?>" alt="Logo">
                 <?php else: ?>
                     <span id="logoEmoji">🧺</span>
                 <?php endif; ?>
@@ -143,7 +165,7 @@ $temLogo = !empty($config['sistema_logo']) && file_exists(__DIR__ . '/../' . $co
             <div class="preview-brand">
                 <div class="preview-brand-icon" id="previewBrandIcon">
                     <?php if ($temLogo): ?>
-                        <img src="../<?= htmlspecialchars($config['sistema_logo']) ?>?v=<?= time() ?>" alt="">
+                        <img src="<?= htmlspecialchars(storedImageSrc($config['sistema_logo']), ENT_QUOTES, 'UTF-8') ?>" alt="">
                     <?php else: ?>
                         <span id="previewBrandEmoji">🧺</span>
                     <?php endif; ?>

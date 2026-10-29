@@ -46,7 +46,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 }
 
 $sysConfig = obterConfiguracoes();
-$temLogo = !empty($sysConfig['sistema_logo']) && file_exists(__DIR__ . '/../' . $sysConfig['sistema_logo']);
+$temLogo = storedImageExists($sysConfig['sistema_logo'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -115,7 +115,7 @@ $temLogo = !empty($sysConfig['sistema_logo']) && file_exists(__DIR__ . '/../' . 
     <div class="login-header">
         <div class="login-icon">
             <?php if ($temLogo): ?>
-                <img src="../<?= htmlspecialchars($sysConfig['sistema_logo']) ?>" alt="Logo">
+                <img src="<?= htmlspecialchars(storedImageSrc($sysConfig['sistema_logo']), ENT_QUOTES, 'UTF-8') ?>" alt="Logo">
             <?php else: ?>
                 🧺
             <?php endif; ?>

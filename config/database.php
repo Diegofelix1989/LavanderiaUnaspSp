@@ -1,6 +1,8 @@
 <?php
 // config/database.php - Conexão e inicialização do banco MySQL
 
+require_once __DIR__ . '/blob_storage.php';
+
 function getDB() {
     static $pdo = null;
     if ($pdo === null) {

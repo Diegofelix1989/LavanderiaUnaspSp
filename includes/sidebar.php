@@ -22,8 +22,8 @@ $isCadastrosActive = in_array($paginaAtual, ['departamentos.php', 'produtos.php'
     <!-- Cabeçalho da Marca -->
     <div class="sidebar-header">
         <div class="brand-icon">
-            <?php if (!empty($sysConfig['sistema_logo']) && file_exists(__DIR__ . '/../' . $sysConfig['sistema_logo'])): ?>
-                <img src="../<?= htmlspecialchars($sysConfig['sistema_logo']) ?>?v=<?= filemtime(__DIR__ . '/../' . $sysConfig['sistema_logo']) ?>" 
+            <?php if (storedImageExists($sysConfig['sistema_logo'] ?? '')): ?>
+                <img src="<?= htmlspecialchars(storedImageSrc($sysConfig['sistema_logo']), ENT_QUOTES, 'UTF-8') ?>"
                      alt="Logo" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
             <?php else: ?>
                 🧺
@@ -38,8 +38,8 @@ $isCadastrosActive = in_array($paginaAtual, ['departamentos.php', 'produtos.php'
     <!-- Perfil do Usuário Logado -->
     <a href="perfil.php" class="user-profile-card" title="Editar Perfil">
         <div class="avatar-container">
-            <?php if (!empty($currentUser['avatar']) && file_exists(__DIR__ . '/../' . $currentUser['avatar'])): ?>
-                <img src="../<?= htmlspecialchars($currentUser['avatar']) ?>?v=<?= filemtime(__DIR__ . '/../' . $currentUser['avatar']) ?>" alt="Avatar" class="avatar-img">
+            <?php if (storedImageExists($currentUser['avatar'] ?? '')): ?>
+                <img src="<?= htmlspecialchars(storedImageSrc($currentUser['avatar']), ENT_QUOTES, 'UTF-8') ?>" alt="Avatar" class="avatar-img">
             <?php else: ?>
                 <div class="avatar-img" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
                     <?= strtoupper(substr($currentUser['nome'] ?? 'U', 0, 1)) ?>

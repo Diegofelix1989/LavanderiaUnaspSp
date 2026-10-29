@@ -455,8 +455,8 @@ $listaCargos = $stmtCargos->fetchAll(PDO::FETCH_COLUMN);
                             <td>
                                 <div style="display: flex; align-items: center; gap: 12px;">
                                     <div style="position: relative; width: 40px; height: 40px; flex-shrink: 0;">
-                                        <?php if (!empty($u['avatar']) && file_exists(__DIR__ . '/../' . $u['avatar'])): ?>
-                                            <img src="../<?= htmlspecialchars($u['avatar']) ?>" alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0;">
+                                        <?php if (storedImageExists($u['avatar'] ?? '')): ?>
+                                            <img src="<?= htmlspecialchars(storedImageSrc($u['avatar']), ENT_QUOTES, 'UTF-8') ?>" alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0;">
                                         <?php else: ?>
                                             <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; border: 2px solid #e2e8f0;">
                                                 <?= $letra ?>

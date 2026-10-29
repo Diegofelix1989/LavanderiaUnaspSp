@@ -20,38 +20,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
         $base64Data = $_POST['avatar_base64'] ?? '';
         
         if (preg_match('/^data:image\/(jpeg|png|webp);base64,(.+)$/', $base64Data, $matches)) {
-            $ext = ($matches[1] === 'png') ? 'png' : 'jpg';
-            $binary = base64_decode($matches[2]);
+            $mime = $matches[1] === 'jpeg' ? 'image/jpeg' : 'image/' . $matches[1];
+            $ext = $matches[1] === 'jpeg' ? 'jpg' : $matches[1];
+            $binary = base64_decode($matches[2], true);
 
-            if ($binary && strlen($binary) <= 5 * 1024 * 1024) {
-                $dirAvatars = __DIR__ . '/../uploads/avatars';
-                if (!is_dir($dirAvatars)) {
-                    mkdir($dirAvatars, 0755, true);
-                }
-
-                $nomeArquivo = 'avatar_' . $currentUser['id'] . '_' . time() . '.' . $ext;
-                $caminhoRelativo = 'uploads/avatars/' . $nomeArquivo;
-                $caminhoAbsoluto = $dirAvatars . '/' . $nomeArquivo;
-
-                if (file_put_contents($caminhoAbsoluto, $binary)) {
-                    // Remove avatar anterior se foi upload customizado
-                    if (!empty($currentUser['avatar']) && strpos($currentUser['avatar'], 'uploads/avatars/') !== false) {
-                        $antigo = __DIR__ . '/../' . $currentUser['avatar'];
-                        if (file_exists($antigo)) {
-                            @unlink($antigo);
-                        }
-                    }
-
+            if ($binary && strlen($binary) <= 3 * 1024 * 1024) {
+                try {
+                    $avatarAnterior = $currentUser['avatar'] ?? '';
+                    $nomeArquivo = 'avatar_' . $currentUser['id'] . '_' . bin2hex(random_bytes(12)) . '.' . $ext;
+                    $caminhoRelativo = storeImage($binary, 'avatars', $nomeArquivo, $mime);
                     $stmt = $pdo->prepare("UPDATE usuarios SET avatar = ? WHERE id = ?");
                     $stmt->execute([$caminhoRelativo, $currentUser['id']]);
 
-                    // Atualiza sessão
                     $_SESSION['usuario']['avatar'] = $caminhoRelativo;
                     $currentUser['avatar'] = $caminhoRelativo;
 
-                    definirAlerta('success', 'Foto de perfil ajustada e atualizada com sucesso!');
-                } else {
-                    definirAlerta('danger', 'Não foi possível salvar o arquivo da imagem.');
+                    $alertType = 'success';
+                    $alertMessage = 'Foto de perfil ajustada e atualizada com sucesso!';
+                    if ($avatarAnterior && $avatarAnterior !== $caminhoRelativo) {
+                        try {
+                            deleteStoredImage($avatarAnterior);
+                        } catch (Throwable $e) {
+                            error_log('Falha ao remover avatar antigo: ' . $e->getMessage());
+                            $alertType = 'warning';
+                            $alertMessage = 'A foto foi atualizada, mas não foi possível remover a imagem antiga.';
+                        }
+                    }
+                    definirAlerta($alertType, $alertMessage);
+                } catch (Throwable $e) {
+                    error_log('Falha ao salvar avatar: ' . $e->getMessage());
+                    definirAlerta('danger', 'Não foi possível salvar a foto. Verifique a conexão com o armazenamento Blob.');
                 }
             } else {
                 definirAlerta('danger', 'Arquivo de imagem inválido ou tamanho excedido.');
@@ -65,20 +63,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     // ── Remover Foto e Voltar para Iniciais ───────────────────────────────
     } elseif ($acao === 'remover_avatar') {
-        if (!empty($currentUser['avatar']) && strpos($currentUser['avatar'], 'uploads/avatars/') !== false) {
-            $antigo = __DIR__ . '/../' . $currentUser['avatar'];
-            if (file_exists($antigo)) {
-                @unlink($antigo);
+        try {
+            $avatarAnterior = $currentUser['avatar'] ?? '';
+            $stmt = $pdo->prepare("UPDATE usuarios SET avatar = '' WHERE id = ?");
+            $stmt->execute([$currentUser['id']]);
+            $_SESSION['usuario']['avatar'] = '';
+            $currentUser['avatar'] = '';
+
+            $alertType = 'info';
+            $alertMessage = 'Foto de perfil removida. O sistema voltará a exibir seu avatar com as iniciais.';
+            if ($avatarAnterior) {
+                try {
+                    deleteStoredImage($avatarAnterior);
+                } catch (Throwable $e) {
+                    error_log('Falha ao remover arquivo do avatar: ' . $e->getMessage());
+                    $alertType = 'warning';
+                    $alertMessage = 'A foto foi removida do perfil, mas o arquivo antigo não pôde ser excluído.';
+                }
             }
+            definirAlerta($alertType, $alertMessage);
+        } catch (Throwable $e) {
+            error_log('Falha ao remover avatar: ' . $e->getMessage());
+            definirAlerta('danger', 'Não foi possível remover a foto do perfil.');
         }
-
-        $stmt = $pdo->prepare("UPDATE usuarios SET avatar = '' WHERE id = ?");
-        $stmt->execute([$currentUser['id']]);
-
-        $_SESSION['usuario']['avatar'] = '';
-        $currentUser['avatar'] = '';
-
-        definirAlerta('info', 'Foto de perfil removida. O sistema voltará a exibir seu avatar com as iniciais.');
         header('Location: perfil.php');
         exit;
 
@@ -165,7 +172,7 @@ require_once __DIR__ . '/../includes/header.php';
 // Lista de sessões ativas do usuário
 $sessoesAtivas = listarSessoesUsuario($currentUser['id']);
 $precisaTrocarSenha = ((int)$currentUser['senha_alterada'] === 0 || isset($_GET['trocar_senha']));
-$temFotoPersonalizada = !empty($currentUser['avatar']) && file_exists(__DIR__ . '/../' . $currentUser['avatar']);
+$temFotoPersonalizada = storedImageExists($currentUser['avatar'] ?? '');
 ?>
 
 <div class="page-header" style="margin-bottom: 20px;">
@@ -201,7 +208,7 @@ $temFotoPersonalizada = !empty($currentUser['avatar']) && file_exists(__DIR__ . 
             <div style="display: flex; align-items: center; gap: 18px; padding-bottom: 20px; margin-bottom: 18px; border-bottom: 1px solid #e2e8f0;">
                 <div style="position: relative; width: 84px; height: 84px; flex-shrink: 0;">
                     <?php if ($temFotoPersonalizada): ?>
-                        <img src="../<?= htmlspecialchars($currentUser['avatar']) ?>?t=<?= time() ?>" 
+                        <img src="<?= htmlspecialchars(storedImageSrc($currentUser['avatar']), ENT_QUOTES, 'UTF-8') ?>"
                              alt="Avatar" 
                              id="avatarPreviewImg"
                              style="width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #3b82f6; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
