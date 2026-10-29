@@ -135,28 +135,48 @@ $temLogo = storedImageExists($sysConfig['sistema_logo'] ?? '');
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(tokenCsrfAtual(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="form-group">
             <label class="form-label" for="email">E-mail</label>
-            <input type="email" id="email" name="email" class="form-control" placeholder="seu@email.com" required autofocus>
+            <input type="email" id="email" name="email" class="form-control" placeholder="seu@email.com" autocomplete="username" required autofocus>
         </div>
 
         <div class="form-group" style="margin-bottom: 24px;">
             <label class="form-label" for="senha">Senha</label>
-            <input type="password" id="senha" name="senha" class="form-control" placeholder="••••••••" required>
+            <input type="password" id="senha" name="senha" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
         </div>
+
+        <label for="lembrarLogin" style="display: flex; align-items: center; gap: 8px; margin: -8px 0 20px; color: #475569; font-size: 0.9rem; cursor: pointer;">
+            <input type="checkbox" id="lembrarLogin" style="width: 16px; height: 16px; accent-color: #3b82f6;">
+            Lembrar meu login neste dispositivo
+        </label>
 
         <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">
             Entrar no Sistema
-        </button>
-
-        <button type="button" id="btnAutoPreencher" class="btn btn-outline" style="width: 100%; margin-top: 12px; padding: 10px; font-size: 0.88rem; border-style: dashed; color: #3b82f6;">
-            ⚡ Preencher Automaticamente (Admin)
         </button>
     </form>
 </div>
 
 <script>
-document.getElementById('btnAutoPreencher').addEventListener('click', function() {
-    document.getElementById('email').value = 'admin@lavanderia.com';
-    document.getElementById('senha').value = 'admin123';
+const loginEmailKey = 'lavanderia_login_email';
+const emailInput = document.getElementById('email');
+const rememberLogin = document.getElementById('lembrarLogin');
+const savedEmail = localStorage.getItem(loginEmailKey);
+
+if (savedEmail) {
+    emailInput.value = savedEmail;
+    rememberLogin.checked = true;
+}
+
+rememberLogin.addEventListener('change', function() {
+    if (!this.checked) {
+        localStorage.removeItem(loginEmailKey);
+    }
+});
+
+document.querySelector('form').addEventListener('submit', function() {
+    if (rememberLogin.checked && emailInput.value.trim()) {
+        localStorage.setItem(loginEmailKey, emailInput.value.trim());
+    } else {
+        localStorage.removeItem(loginEmailKey);
+    }
 });
 </script>
 
