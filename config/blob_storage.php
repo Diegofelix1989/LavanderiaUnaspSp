@@ -41,7 +41,7 @@ function storedImageSrc(string $value, string $localPrefix = '../'): string {
 
 function callVercelBlob(array $payload): array {
     $token = getenv('BLOB_READ_WRITE_TOKEN');
-    $deploymentHost = getenv('VERCEL_URL');
+    $deploymentHost = getenv('VERCEL_PROJECT_PRODUCTION_URL') ?: getenv('VERCEL_URL');
     if (!$token || !$deploymentHost) {
         throw new RuntimeException('Configure o Blob Store público no projeto Vercel e conecte-o ao ambiente.');
     }

@@ -16,7 +16,7 @@ O aplicativo prioriza as variáveis de ambiente do servidor, depois o arquivo `.
 
 1. Crie um Blob Store com acesso **Public** e conecte-o ao projeto da lavanderia nos ambientes desejados. Um store privado não pode ser convertido em público.
 2. A conexão deve disponibilizar `BLOB_READ_WRITE_TOKEN` ao projeto Vercel. O token é usado somente entre funções server-side; nunca o exponha no navegador.
-3. Faça deploy do `package.json` e do `package-lock.json`; a função Node `api/blob.js` recebe os uploads e grava as imagens no Blob. O PHP mantém apenas a URL pública no MySQL.
+3. Faça deploy do `package.json` e do `package-lock.json`; a função Node `api/blob.js` recebe os uploads e grava as imagens no Blob. O PHP mantém apenas a URL pública no MySQL. A comunicação server-side usa o domínio de produção da Vercel para evitar bloqueios de proteção do hostname individual da implantação.
 
 Uploads locais continuam sendo gravados em `uploads/`. Na Vercel, avatares e logotipos são enviados ao Blob público e continuam disponíveis entre execuções.
 
