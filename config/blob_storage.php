@@ -69,7 +69,14 @@ function callVercelBlob(array $payload): array {
     $result = json_decode($response, true);
     $statusLine = $http_response_header[0] ?? '';
     if (!is_array($result) || preg_match('/\s2\d\d\s/', $statusLine) !== 1) {
-        throw new RuntimeException($result['error'] ?? 'A Vercel Blob não concluiu a operação.');
+        $errorMessage = $result['error'] ?? null;
+        if (is_array($errorMessage)) {
+            $errorMessage = $errorMessage['message'] ?? $errorMessage['error'] ?? null;
+        }
+        if (!is_string($errorMessage) || trim($errorMessage) === '') {
+            $errorMessage = 'A Vercel Blob não concluiu a operação. ' . $statusLine;
+        }
+        throw new RuntimeException($errorMessage);
     }
 
     return $result;
