@@ -37,6 +37,9 @@ $ordemFiltro   = $getStr('ordem') ?: 'valor_desc';
 if (!in_array($ordemFiltro, ['valor_desc', 'pecas_desc', 'nome_asc', 'valor_asc', 'data_desc'], true)) {
     $ordemFiltro = 'valor_desc';
 }
+if ($modelo !== 'departamento_detalhado' && $ordemFiltro === 'data_desc') {
+    $ordemFiltro = 'valor_desc';
+}
 
 $sysConfig = obterConfiguracoes();
 $qtdAssinaturasDefault = (int)($sysConfig['relatorio_assinatura_qtd'] ?? 2);
@@ -451,6 +454,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
                     number_format($it['valor_total'], 2, ',', '.')
                 ]);
             }
+            fputcsv($output, [
+                'SUBTOTAL - ' . $dep,
+                '',
+                '',
+                $dados['subtotal_pecas'],
+                '',
+                number_format($dados['subtotal_valor'], 2, ',', '.')
+            ]);
         }
         fputcsv($output, ['TOTAL GERAL', '', '', $totalGeralPecasMod1, '', number_format($totalGeralValorMod1, 2, ',', '.')]);
     } elseif ($modelo === 'pecas_consolidado') {
@@ -566,6 +577,44 @@ require_once __DIR__ . '/../includes/header.php';
     padding: 8px 9px;
     font-size: 0.86rem;
     border-radius: 10px;
+}
+.report-search-select { position: relative; }
+.report-search-select-results {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    width: 100%;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+    color: var(--text-primary);
+    z-index: 1200;
+}
+.report-search-select-results[hidden] { display: none; }
+.report-search-select-option {
+    display: block;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.report-search-select-option:hover,
+.report-search-select-option:focus,
+.report-search-select-option.active {
+    background: var(--bg-muted);
+    outline: none;
+}
+.report-search-select-empty {
+    padding: 9px 12px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
 }
 .report-clear-btn {
     display: inline-flex;
@@ -948,6 +997,14 @@ require_once __DIR__ . '/../includes/header.php';
 .table-compact-report tbody tr:hover {
     background: #f8fafc;
 }
+.report-department-spacer td {
+    height: 10px;
+    padding: 0 !important;
+    border: 0 !important;
+    background: var(--bg-main);
+    font-size: 0;
+    line-height: 0;
+}
 .table-compact-report .row-highlight {
     background: #f1f5f9;
     font-weight: 700;
@@ -1309,27 +1366,39 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
         </div>
 
         <div class="report-filter-field">
-            <label class="filter-label-compact" for="rel_filtro_dep">Departamento</label>
-            <select name="departamento_id" id="rel_filtro_dep" class="form-control">
-                <option value="0">Todos os Departamentos</option>
-                <?php foreach ($todosDepartamentos as $d): ?>
-                    <option value="<?= (int)$d['id'] ?>" <?= (int)$d['id'] === $depFiltro ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($d['nome']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <label class="filter-label-compact" for="buscar_rel_filtro_dep">Departamento</label>
+            <div class="report-search-select">
+                <input type="search" id="buscar_rel_filtro_dep" class="form-control report-search-select-input"
+                       placeholder="Pesquisar departamento..." autocomplete="off" role="combobox"
+                       aria-autocomplete="list" aria-expanded="false" aria-controls="resultados_rel_filtro_dep">
+                <div id="resultados_rel_filtro_dep" class="report-search-select-results" role="listbox" hidden></div>
+                <select name="departamento_id" id="rel_filtro_dep" class="form-control" hidden tabindex="-1" aria-hidden="true">
+                    <option value="" <?= $depFiltro === 0 ? 'selected' : '' ?>>Todos os Departamentos</option>
+                    <?php foreach ($todosDepartamentos as $d): ?>
+                        <option value="<?= (int)$d['id'] ?>" <?= (int)$d['id'] === $depFiltro ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($d['nome']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
 
         <div class="report-filter-field">
-            <label class="filter-label-compact" for="rel_filtro_prod">Peça / Produto</label>
-            <select name="produto_id" id="rel_filtro_prod" class="form-control">
-                <option value="0">Todas as Peças</option>
-                <?php foreach ($todosProdutos as $p): ?>
-                    <option value="<?= (int)$p['id'] ?>" <?= (int)$p['id'] === $prodFiltro ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($p['nome']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <label class="filter-label-compact" for="buscar_rel_filtro_prod">Peça / Produto</label>
+            <div class="report-search-select">
+                <input type="search" id="buscar_rel_filtro_prod" class="form-control report-search-select-input"
+                       placeholder="Pesquisar peça..." autocomplete="off" role="combobox"
+                       aria-autocomplete="list" aria-expanded="false" aria-controls="resultados_rel_filtro_prod">
+                <div id="resultados_rel_filtro_prod" class="report-search-select-results" role="listbox" hidden></div>
+                <select name="produto_id" id="rel_filtro_prod" class="form-control" hidden tabindex="-1" aria-hidden="true">
+                    <option value="" <?= $prodFiltro === 0 ? 'selected' : '' ?>>Todas as Peças</option>
+                    <?php foreach ($todosProdutos as $p): ?>
+                        <option value="<?= (int)$p['id'] ?>" <?= (int)$p['id'] === $prodFiltro ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($p['nome']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
 
         <div class="report-filter-field">
@@ -1339,6 +1408,9 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
                 <option value="pecas_desc" <?= $ordemFiltro === 'pecas_desc' ? 'selected' : '' ?>>Maior Qtd. Peças</option>
                 <option value="nome_asc" <?= $ordemFiltro === 'nome_asc' ? 'selected' : '' ?>>Ordem Alfabética (A-Z)</option>
                 <option value="valor_asc" <?= $ordemFiltro === 'valor_asc' ? 'selected' : '' ?>>Menor Valor (R$)</option>
+                <?php if ($modelo === 'departamento_detalhado'): ?>
+                    <option value="data_desc" <?= $ordemFiltro === 'data_desc' ? 'selected' : '' ?>>Data mais recente</option>
+                <?php endif; ?>
             </select>
         </div>
 
@@ -1564,17 +1636,27 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
                             </td>
                         </tr>
                     <?php else: ?>
+                        <?php $primeiroDepartamento = true; ?>
                         <?php foreach ($relatorioAgrupado as $depNome => $dados): ?>
+                            <?php if (!$primeiroDepartamento): ?>
+                                <tr class="report-department-spacer" aria-hidden="true">
+                                    <td colspan="5"></td>
+                                </tr>
+                            <?php endif; ?>
+                            <?php $primeiroDepartamento = false; ?>
                             <!-- Cabeçalho do Grupo de Departamento -->
                             <tr style="background: #f1f5f9; border-top: 2px solid #cbd5e1;">
                                 <td colspan="3" style="padding: 8px 12px; font-weight: 800; color: #0f172a; font-size: 0.88rem;">
                                     🏢 <?= htmlspecialchars($depNome) ?>
+                                    <span style="margin-left: 8px; color: #64748b; font-size: 0.76rem; font-weight: 700;">
+                                        <?= number_format($dados['subtotal_pecas'], 0, ',', '.') ?> <?= (int)$dados['subtotal_pecas'] === 1 ? 'peça' : 'peças' ?>
+                                    </span>
                                 </td>
-                                <td style="text-align: right; font-weight: 800; color: #475569; font-size: 0.8rem;">
-                                    Subtotal (<?= $dados['subtotal_pecas'] ?> <?= (int)$dados['subtotal_pecas'] === 1 ? 'peça' : 'peças' ?>):
-                                </td>
-                                <td style="text-align: right; font-weight: 800; color: #047857; font-size: 0.9rem;">
-                                    R$ <?= number_format($dados['subtotal_valor'], 2, ',', '.') ?>
+                                <td colspan="2" style="text-align: right; white-space: nowrap; font-weight: 800; color: #475569; font-size: 0.82rem;">
+                                    Subtotal:
+                                    <span style="margin-left: 4px; color: #047857; font-size: 0.9rem;">
+                                        R$ <?= number_format($dados['subtotal_valor'], 2, ',', '.') ?>
+                                    </span>
                                 </td>
                             </tr>
                             <?php foreach ($dados['itens'] as $it): ?>
@@ -1788,6 +1870,149 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
     const selectDep = document.getElementById('rel_filtro_dep');
     const selectProd = document.getElementById('rel_filtro_prod');
     const selectOrdem = document.getElementById('rel_filtro_ordem');
+
+    function configurarBuscaFiltro(inputId, select, resultadosId, mensagemVazia) {
+        const input = document.getElementById(inputId);
+        const resultados = document.getElementById(resultadosId);
+        if (!input || !select || !resultados) return;
+
+        let textoEditado = false;
+        let opcoesAtuais = [];
+        let indiceAtivo = -1;
+
+        function normalizarBusca(texto) {
+            return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+        }
+
+        function ocultarResultados() {
+            resultados.hidden = true;
+            input.setAttribute('aria-expanded', 'false');
+        }
+
+        function selecionarOpcao(opcao) {
+            const valorAnterior = select.value;
+            select.value = opcao.value;
+            input.value = opcao.value ? opcao.textContent.trim() : '';
+            input.setCustomValidity('');
+            const deveAplicar = textoEditado || select.value !== valorAnterior;
+            textoEditado = false;
+            ocultarResultados();
+            input.removeAttribute('aria-activedescendant');
+
+            if (deveAplicar) {
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        function atualizarOpcaoAtiva(indice) {
+            const botoes = Array.from(resultados.querySelectorAll('[role="option"]'));
+            if (botoes.length === 0) return;
+
+            indiceAtivo = (indice + botoes.length) % botoes.length;
+            botoes.forEach(function(botao, indiceBotao) {
+                const ativo = indiceBotao === indiceAtivo;
+                botao.classList.toggle('active', ativo);
+                botao.setAttribute('aria-selected', ativo ? 'true' : 'false');
+            });
+            input.setAttribute('aria-activedescendant', botoes[indiceAtivo].id);
+            botoes[indiceAtivo].scrollIntoView({ block: 'nearest' });
+        }
+
+        function mostrarResultados() {
+            const termo = normalizarBusca(input.value.trim());
+            opcoesAtuais = Array.from(select.options).filter(function(opcao) {
+                return normalizarBusca(opcao.textContent.trim()).includes(termo);
+            });
+            indiceAtivo = -1;
+            input.removeAttribute('aria-activedescendant');
+
+            resultados.replaceChildren();
+            if (opcoesAtuais.length === 0) {
+                const vazio = document.createElement('div');
+                vazio.className = 'report-search-select-empty';
+                vazio.textContent = mensagemVazia;
+                resultados.appendChild(vazio);
+            } else {
+                opcoesAtuais.forEach(function(opcao, indice) {
+                    const botao = document.createElement('button');
+                    botao.type = 'button';
+                    botao.className = 'report-search-select-option';
+                    botao.id = resultados.id + '_opcao_' + indice;
+                    botao.setAttribute('role', 'option');
+                    botao.setAttribute('aria-selected', 'false');
+                    botao.tabIndex = -1;
+                    botao.textContent = opcao.textContent.trim();
+                    botao.addEventListener('mousedown', function(event) {
+                        event.preventDefault();
+                    });
+                    botao.addEventListener('click', function() {
+                        selecionarOpcao(opcao);
+                    });
+                    resultados.appendChild(botao);
+                });
+            }
+
+            resultados.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+        }
+
+        const opcaoSelecionada = Array.from(select.options).find(function(opcao) {
+            return opcao.value === select.value;
+        });
+        input.value = select.value && opcaoSelecionada ? opcaoSelecionada.textContent.trim() : '';
+
+        input.addEventListener('focus', mostrarResultados);
+        input.addEventListener('input', function() {
+            textoEditado = true;
+            input.setCustomValidity('');
+            mostrarResultados();
+        });
+        input.addEventListener('keydown', function(event) {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                if (resultados.hidden) mostrarResultados();
+                if (opcoesAtuais.length > 0) {
+                    event.preventDefault();
+                    const direcao = event.key === 'ArrowDown' ? 1 : -1;
+                    const indiceSeguinte = indiceAtivo >= 0
+                        ? indiceAtivo + direcao
+                        : (direcao > 0 ? 0 : opcoesAtuais.length - 1);
+                    atualizarOpcaoAtiva(indiceSeguinte);
+                }
+            } else if (event.key === 'Enter' && !resultados.hidden && opcoesAtuais.length > 0) {
+                event.preventDefault();
+                selecionarOpcao(opcoesAtuais[indiceAtivo >= 0 ? indiceAtivo : 0]);
+            } else if (event.key === 'Escape' && !resultados.hidden) {
+                event.preventDefault();
+                ocultarResultados();
+                input.removeAttribute('aria-activedescendant');
+            }
+        });
+        input.addEventListener('blur', function() {
+            window.setTimeout(function() {
+                ocultarResultados();
+                if (textoEditado) {
+                    const atual = Array.from(select.options).find(function(opcao) {
+                        return opcao.value === select.value;
+                    });
+                    input.value = select.value && atual ? atual.textContent.trim() : '';
+                    textoEditado = false;
+                }
+            }, 120);
+        });
+    }
+
+    configurarBuscaFiltro(
+        'buscar_rel_filtro_dep',
+        selectDep,
+        'resultados_rel_filtro_dep',
+        'Nenhum departamento encontrado.'
+    );
+    configurarBuscaFiltro(
+        'buscar_rel_filtro_prod',
+        selectProd,
+        'resultados_rel_filtro_prod',
+        'Nenhuma peça encontrada.'
+    );
 
     // Os selects aplicam o filtro automaticamente
     [selectDep, selectProd, selectOrdem].forEach(function (select) {
