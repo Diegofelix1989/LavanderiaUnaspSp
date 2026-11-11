@@ -160,6 +160,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 $pageTitle  = 'Lançamentos';
 $filtroMes   = is_string($_GET['mes'] ?? null) ? trim($_GET['mes']) : '';
 $filtroData  = is_string($_GET['data'] ?? null) ? trim($_GET['data']) : '';
+$periodoInformado = array_key_exists('data', $_GET) || array_key_exists('mes', $_GET);
 $filtroDep   = is_string($_GET['departamento_id'] ?? null) ? $_GET['departamento_id'] : '';
 $filtroBusca = is_string($_GET['busca'] ?? null) ? trim($_GET['busca']) : '';
 
@@ -169,6 +170,9 @@ if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $filtroMes)) {
 $dataObj = DateTime::createFromFormat('Y-m-d', $filtroData);
 if (!$dataObj || $dataObj->format('Y-m-d') !== $filtroData) {
     $filtroData = '';
+}
+if (!$periodoInformado) {
+    $filtroData = date('Y-m-d');
 }
 $filtroDep = ctype_digit((string)$filtroDep) ? (string)(int)$filtroDep : '';
 if (mb_strlen($filtroBusca) > 100) {
