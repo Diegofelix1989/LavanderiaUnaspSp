@@ -997,13 +997,50 @@ require_once __DIR__ . '/../includes/header.php';
 .table-compact-report tbody tr:hover {
     background: #f8fafc;
 }
-.report-department-spacer td {
-    height: 10px;
-    padding: 0 !important;
-    border: 0 !important;
-    background: var(--bg-main);
-    font-size: 0;
-    line-height: 0;
+.report-department-block {
+    margin-bottom: 12px;
+    background: #ffffff;
+    border: 1px solid #333333;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+.report-department-title {
+    margin: 0;
+    padding: 3px 6px;
+    background: #bdbdbd;
+    border-bottom: 1px solid #a6a6a6;
+    color: #111111;
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+.report-department-block .table-compact-report {
+    margin: 0;
+}
+.report-department-block .table-compact-report th {
+    padding: 4px 8px;
+    background: #d3d3d3;
+    border: 1px solid #c5c5c5;
+    color: #111111;
+    font-size: 0.78rem;
+    letter-spacing: normal;
+    text-transform: none;
+}
+.report-department-block .table-compact-report td {
+    padding: 3px 8px;
+    border-bottom: 1px solid #dce5ed;
+    color: #315a82;
+}
+.report-department-block .table-compact-report tbody tr:nth-child(even):not(.report-department-total) {
+    background: #f3f7fa;
+}
+.report-department-block .table-compact-report tbody tr:hover:not(.report-department-total) {
+    background: #edf3f8;
+}
+.report-department-total td {
+    background: #eaf0f5;
+    border-top: 1px solid #aebdca;
+    color: #173c60;
+    font-weight: 800;
 }
 .table-compact-report .row-highlight {
     background: #f1f5f9;
@@ -1137,6 +1174,31 @@ require_once __DIR__ . '/../includes/header.php';
     .table-compact-report tr[style*="border-top: 2px solid"] {
         page-break-after: avoid !important;
         break-after: avoid !important;
+    }
+    .report-department-block,
+    .report-department-block .table-compact-report {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .report-department-title {
+        background: #bdbdbd !important;
+        border-color: #a6a6a6 !important;
+        color: #111111 !important;
+    }
+    .report-department-block .table-compact-report th {
+        background: #d3d3d3 !important;
+        border-color: #c5c5c5 !important;
+        color: #111111 !important;
+    }
+    .report-department-block .table-compact-report td {
+        color: #315a82 !important;
+    }
+    .report-department-block .table-compact-report tbody tr:nth-child(even):not(.report-department-total) {
+        background: #f3f7fa !important;
+    }
+    .report-department-total td {
+        background: #eaf0f5 !important;
+        color: #173c60 !important;
     }
     .signature-box {
         page-break-inside: avoid !important;
@@ -1618,69 +1680,63 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
         </div>
 
         <div class="table-responsive">
-            <table class="table-compact-report">
-                <thead>
-                    <tr>
-                        <th>Departamento / Peça</th>
-                        <th style="width: 110px; text-align: center;">Data</th>
-                        <th style="width: 100px; text-align: center;">Qtde</th>
-                        <th style="width: 130px; text-align: right;">Unitário Médio (R$)</th>
-                        <th style="width: 140px; text-align: right;">Subtotal (R$)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($relatorioAgrupado)): ?>
-                        <tr>
-                            <td colspan="5" style="text-align: center; padding: 36px; color: #94a3b8;">
-                                Nenhum lançamento encontrado para os filtros selecionados.
-                            </td>
-                        </tr>
-                    <?php else: ?>
-                        <?php $primeiroDepartamento = true; ?>
-                        <?php foreach ($relatorioAgrupado as $depNome => $dados): ?>
-                            <?php if (!$primeiroDepartamento): ?>
-                                <tr class="report-department-spacer" aria-hidden="true">
-                                    <td colspan="5"></td>
-                                </tr>
-                            <?php endif; ?>
-                            <?php $primeiroDepartamento = false; ?>
-                            <!-- Cabeçalho do Grupo de Departamento -->
-                            <tr style="background: #f1f5f9; border-top: 2px solid #cbd5e1;">
-                                <td colspan="3" style="padding: 8px 12px; font-weight: 800; color: #0f172a; font-size: 0.88rem;">
-                                    🏢 <?= htmlspecialchars($depNome) ?>
-                                    <span style="margin-left: 8px; color: #64748b; font-size: 0.76rem; font-weight: 700;">
-                                        <?= number_format($dados['subtotal_pecas'], 0, ',', '.') ?> <?= (int)$dados['subtotal_pecas'] === 1 ? 'peça' : 'peças' ?>
-                                    </span>
-                                </td>
-                                <td colspan="2" style="text-align: right; white-space: nowrap; font-weight: 800; color: #475569; font-size: 0.82rem;">
-                                    Subtotal:
-                                    <span style="margin-left: 4px; color: #047857; font-size: 0.9rem;">
-                                        R$ <?= number_format($dados['subtotal_valor'], 2, ',', '.') ?>
-                                    </span>
-                                </td>
-                            </tr>
-                            <?php foreach ($dados['itens'] as $it): ?>
+            <?php if (empty($relatorioAgrupado)): ?>
+                <div style="text-align: center; padding: 36px; color: #94a3b8;">
+                    Nenhum lançamento encontrado para os filtros selecionados.
+                </div>
+            <?php else: ?>
+                <?php foreach ($relatorioAgrupado as $depNome => $dados): ?>
+                    <section class="report-department-block" aria-label="<?= htmlspecialchars('Departamento: ' . $depNome, ENT_QUOTES, 'UTF-8') ?>">
+                        <h3 class="report-department-title">🏢 <?= htmlspecialchars($depNome) ?></h3>
+                        <table class="table-compact-report">
+                            <thead>
                                 <tr>
-                                    <td style="padding-left: 28px; color: #334155;">
-                                        &bull; <?= htmlspecialchars($it['produto_nome']) ?>
+                                    <th>Departamento / Peça</th>
+                                    <th style="width: 110px; text-align: center;">Data</th>
+                                    <th style="width: 100px; text-align: center;">Qtde</th>
+                                    <th style="width: 130px; text-align: right;">Unitário Médio (R$)</th>
+                                    <th style="width: 140px; text-align: right;">Subtotal (R$)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($dados['itens'] as $it): ?>
+                                    <tr>
+                                        <td style="padding-left: 12px; color: #334155;">
+                                            &bull; <?= htmlspecialchars($it['produto_nome']) ?>
+                                        </td>
+                                        <td style="text-align: center; color: #64748b; font-size: 0.8rem;">
+                                            <?= date('d/m/Y', strtotime($it['data_lancamento'])) ?>
+                                        </td>
+                                        <td style="text-align: center; font-weight: 600; color: #0f172a;">
+                                            <?= $it['quantidade'] ?>
+                                        </td>
+                                        <td style="text-align: right; color: #64748b;">
+                                            R$ <?= number_format($it['valor_unitario'], 2, ',', '.') ?>
+                                        </td>
+                                        <td style="text-align: right; font-weight: 600; color: #0f172a;">
+                                            R$ <?= number_format($it['valor_total'], 2, ',', '.') ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <tr class="report-department-total">
+                                    <td colspan="3">
+                                        Total: <?= number_format($dados['subtotal_pecas'], 0, ',', '.') ?>
+                                        <?= (int)$dados['subtotal_pecas'] === 1 ? 'peça' : 'peças' ?>
                                     </td>
-                                    <td style="text-align: center; color: #64748b; font-size: 0.8rem;">
-                                        <?= date('d/m/Y', strtotime($it['data_lancamento'])) ?>
-                                    </td>
-                                    <td style="text-align: center; font-weight: 600; color: #0f172a;">
-                                        <?= $it['quantidade'] ?>
-                                    </td>
-                                    <td style="text-align: right; color: #64748b;">
-                                        R$ <?= number_format($it['valor_unitario'], 2, ',', '.') ?>
-                                    </td>
-                                    <td style="text-align: right; font-weight: 600; color: #0f172a;">
-                                        R$ <?= number_format($it['valor_total'], 2, ',', '.') ?>
+                                    <td colspan="2" style="text-align: right; white-space: nowrap;">
+                                        Subtotal:
+                                        <span style="margin-left: 4px; color: #047857;">
+                                            R$ <?= number_format($dados['subtotal_valor'], 2, ',', '.') ?>
+                                        </span>
                                     </td>
                                 </tr>
-                            <?php endforeach; ?>
-                        <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </section>
+                <?php endforeach; ?>
 
-                        <!-- Total Geral -->
+                <table class="table-compact-report">
+                    <tbody>
                         <tr class="row-highlight" style="border-top: 2px solid #0f172a; background: #f8fafc;">
                             <td colspan="2" style="font-weight: 900; color: #0f172a; text-transform: uppercase;">
                                 &bull; TOTAL GERAL DETALHADO
@@ -1693,9 +1749,9 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
                                 R$ <?= number_format($totalGeralValorMod1, 2, ',', '.') ?>
                             </td>
                         </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
     </div>
 
