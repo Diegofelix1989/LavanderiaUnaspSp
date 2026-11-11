@@ -5,7 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 exigirPermissao('lancamentos_ver');
 $pdo = getDB();
 
-// Processamento de Ações: Criar, Editar, Mover para a Lixeira
+// Processamento de Ações: Lançar em Lote e Mover para a Lixeira
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!validarTokenCsrf()) {
         http_response_code(403);
@@ -14,56 +14,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
 
-    if ($acao === 'salvar') {
-        $id = !empty($_POST['id']) ? (int)$_POST['id'] : null;
-        
-        // Validação de permissões granulares
-        if ($id) {
-            exigirPermissao('lancamentos_editar');
-        } else {
-            exigirPermissao('lancamentos_criar');
-        }
-
-        $data = $_POST['data_lancamento'] ?? date('Y-m-d');
-        $departamentoId = (int)($_POST['departamento_id'] ?? 0);
-        $produtoId = (int)($_POST['produto_id'] ?? 0);
-        $quantidade = max(1, (int)($_POST['quantidade'] ?? 1));
-        $valorUnitario = (float)str_replace(',', '.', $_POST['valor_unitario'] ?? 0);
-        $valorTotal = $quantidade * $valorUnitario;
-        $observacoes = trim($_POST['observacoes'] ?? '');
-
-        if ($departamentoId <= 0 || $produtoId <= 0 || $valorUnitario <= 0) {
-            definirAlerta('danger', 'Preencha todos os campos obrigatórios com valores válidos.');
-        } else {
-            if ($id) {
-                // Atualizar
-                $stmt = $pdo->prepare("
-                    UPDATE lancamentos 
-                    SET data_lancamento = ?, departamento_id = ?, produto_id = ?, quantidade = ?, 
-                        valor_unitario = ?, valor_total = ?, observacoes = ?,
-                        departamento_nome_snapshot = (SELECT nome FROM departamentos WHERE id = ?),
-                        produto_nome_snapshot = (SELECT nome FROM produtos WHERE id = ?)
-                    WHERE id = ? AND deleted_at IS NULL
-                ");
-                $stmt->execute([$data, $departamentoId, $produtoId, $quantidade, $valorUnitario, $valorTotal, $observacoes, $departamentoId, $produtoId, $id]);
-                definirAlerta('success', 'Lançamento atualizado com sucesso!');
-            } else {
-                // Inserir Novo
-                $stmt = $pdo->prepare("
-                    INSERT INTO lancamentos (data_lancamento, departamento_id, produto_id, quantidade, valor_unitario, valor_total, observacoes, usuario_id, departamento_nome_snapshot, produto_nome_snapshot)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 
-                        (SELECT nome FROM departamentos WHERE id = ?),
-                        (SELECT nome FROM produtos WHERE id = ?)
-                    )
-                ");
-                $stmt->execute([$data, $departamentoId, $produtoId, $quantidade, $valorUnitario, $valorTotal, $observacoes, $currentUser['id'], $departamentoId, $produtoId]);
-                definirAlerta('success', 'Lançamento registrado com sucesso!');
-            }
-            header('Location: lancamentos.php');
-            exit;
-        }
-    } elseif ($acao === 'salvar_lote') {
-        exigirPermissao('lancamentos_criar');
+    if ($acao === 'salvar_lote') {
+        $editarId = (int)($_POST['editar_id'] ?? 0);
+        exigirPermissao($editarId > 0 ? 'lancamentos_editar' : 'lancamentos_criar');
 
         $data = $_POST['data_lancamento'] ?? date('Y-m-d');
         $departamentoId = (int)($_POST['departamento_id'] ?? 0);
@@ -102,6 +55,44 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         if (empty($itensValidos)) {
             definirAlerta('danger', 'Nenhum item com peça, quantidade e valor válido foi informado no lote.');
+            header('Location: lancamentos.php');
+            exit;
+        }
+
+        if ($editarId > 0) {
+            if (count($itensPost) !== 1 || count($itensValidos) !== 1) {
+                definirAlerta('danger', 'A edição deve conter exatamente uma peça.');
+                header('Location: lancamentos.php');
+                exit;
+            }
+
+            $item = $itensValidos[0];
+            $valorTotal = $item['quantidade'] * $item['valor_unitario'];
+            $stmt = $pdo->prepare("
+                UPDATE lancamentos
+                SET data_lancamento = ?, departamento_id = ?, produto_id = ?, quantidade = ?,
+                    valor_unitario = ?, valor_total = ?, observacoes = ?,
+                    departamento_nome_snapshot = (SELECT nome FROM departamentos WHERE id = ?),
+                    produto_nome_snapshot = (SELECT nome FROM produtos WHERE id = ?)
+                WHERE id = ? AND deleted_at IS NULL
+            ");
+            $stmt->execute([
+                $data, $departamentoId, $item['produto_id'], $item['quantidade'],
+                $item['valor_unitario'], $valorTotal, $item['observacoes'],
+                $departamentoId, $item['produto_id'], $editarId
+            ]);
+
+            if ($stmt->rowCount() === 0) {
+                $stmtExistencia = $pdo->prepare("SELECT id FROM lancamentos WHERE id = ? AND deleted_at IS NULL");
+                $stmtExistencia->execute([$editarId]);
+                if (!$stmtExistencia->fetchColumn()) {
+                    definirAlerta('danger', 'O lançamento não foi encontrado ou já foi removido.');
+                    header('Location: lancamentos.php');
+                    exit;
+                }
+            }
+
+            definirAlerta('success', 'Lançamento atualizado com sucesso!');
             header('Location: lancamentos.php');
             exit;
         }
@@ -599,13 +590,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
     <div class="page-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
         <?php if (usuarioTemPermissao('lancamentos_criar')): ?>
-        <button type="button" class="btn btn-outline" onclick="abrirModalLancamentoLote()" style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
-            <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <span>📦 Lançamento em Lote</span>
-        </button>
-        <button type="button" class="btn btn-primary" onclick="abrirModalNovoLancamento()" style="display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn btn-primary" onclick="abrirModalLancamentoLote()" style="display: flex; align-items: center; gap: 8px;">
             <svg style="width: 18px; height: 18px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
@@ -741,13 +726,14 @@ require_once __DIR__ . '/../includes/header.php';
                     <th style="width: 90px; text-align: center;">Qtde</th>
                     <th style="width: 130px; text-align: right;">Valor</th>
                     <th style="width: 140px; text-align: right;">Total</th>
+                    <th>Lançado por</th>
                     <th style="width: 120px; text-align: center;">Ações</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($lancamentos)): ?>
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 40px; color: #94a3b8;">
+                        <td colspan="8" style="text-align: center; padding: 40px; color: #94a3b8;">
                             Nenhum lançamento encontrado para os filtros selecionados.
                         </td>
                     </tr>
@@ -764,11 +750,12 @@ require_once __DIR__ . '/../includes/header.php';
                             <td style="text-align: right;" class="cell-total">
                                 R$ <?= number_format($item['valor_total'], 2, ',', '.') ?>
                             </td>
+                            <td><?= htmlspecialchars($item['usuario_nome'] ?? 'Usuário removido', ENT_QUOTES, 'UTF-8') ?></td>
                             <td style="text-align: center;">
                                 <div style="display: inline-flex; gap: 6px;">
                                     <?php if (usuarioTemPermissao('lancamentos_editar')): ?>
-                                    <button type="button" class="btn btn-outline btn-sm btn-icon" 
-                                            onclick='editarLancamento(<?= json_encode($item) ?>)' 
+                                    <button type="button" class="btn btn-outline btn-sm btn-icon"
+                                            onclick='editarLancamentoNoLote(<?= htmlspecialchars(json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>)'
                                             title="Editar">
                                         ✏️
                                     </button>
@@ -786,7 +773,7 @@ require_once __DIR__ . '/../includes/header.php';
                                     </form>
                                     <?php endif; ?>
 
-                                    <?php if (!usuarioTemPermissao('lancamentos_editar') && !usuarioTemPermissao('lancamentos_excluir')): ?>
+                                    <?php if (!usuarioTemPermissao('lancamentos_excluir')): ?>
                                         <span style="font-size: 0.75rem; color: #94a3b8; font-style: italic;">Apenas leitura</span>
                                     <?php endif; ?>
                                 </div>
@@ -834,96 +821,22 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 </div>
 
-<!-- Modal de Novo / Editar Lançamento -->
-<div class="modal-overlay" id="modalLancamento">
-    <div class="modal-container">
-        <form method="POST" action="lancamentos.php" id="formLancamento">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(tokenCsrfAtual(), ENT_QUOTES, 'UTF-8') ?>">
-            <input type="hidden" name="acao" value="salvar">
-            <input type="hidden" name="id" id="modal_id" value="">
-
-
-            <div class="modal-header">
-                <h3 class="modal-title" id="modalTitulo">Novo Lançamento</h3>
-                <button type="button" class="modal-close" onclick="fecharModal('modalLancamento')">&times;</button>
-            </div>
-
-            <div class="modal-body">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="data_lancamento">Data do Lançamento *</label>
-                        <input type="date" name="data_lancamento" id="data_lancamento" class="form-control" value="<?= date('Y-m-d') ?>" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="departamento_id">Departamento *</label>
-                        <select name="departamento_id" id="departamento_id" class="form-control" required>
-                            <option value="">Selecione o departamento...</option>
-                            <?php foreach ($departamentos as $d): ?>
-                                <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['nome']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="select_produto">Peça / Produto *</label>
-                    <select name="produto_id" id="select_produto" class="form-control" required>
-                        <option value="">Selecione a peça...</option>
-                        <?php foreach ($produtos as $p): ?>
-                            <option value="<?= $p['id'] ?>" data-preco="<?= $p['valor_padrao'] ?>">
-                                <?= htmlspecialchars($p['nome']) ?> (Padrão: R$ <?= number_format($p['valor_padrao'], 2, ',', '.') ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label" for="input_quantidade">Quantidade *</label>
-                        <input type="number" name="quantidade" id="input_quantidade" class="form-control" min="1" value="1" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="input_valor_unitario">Valor Unitário (R$) *</label>
-                        <input type="number" step="0.01" min="0.01" name="valor_unitario" id="input_valor_unitario" class="form-control" placeholder="0.00" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="input_valor_total">Total (R$)</label>
-                        <input type="text" id="input_valor_total" class="form-control" readonly style="background: #f1f5f9; font-weight: 700; color: #047857;" value="0.00">
-                    </div>
-                </div>
-
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label" for="observacoes">Observações (Opcional)</label>
-                    <input type="text" name="observacoes" id="observacoes" class="form-control" placeholder="Ex: Lavagem a seco, manchas difíceis...">
-                </div>
-            </div>
-
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="fecharModal('modalLancamento')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- Modal de Lançamento em Lote (Multi-Peças por Departamento) -->
 <div class="modal-overlay" id="modalLancamentoLote">
     <div class="modal-container" style="max-width: 860px; max-height: 92vh; display: flex; flex-direction: column;">
         <form method="POST" action="lancamentos.php" id="formLancamentoLote" onsubmit="return validarEnvioLote(event)" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(tokenCsrfAtual(), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="acao" value="salvar_lote">
+            <input type="hidden" name="editar_id" id="lote_editar_id" value="">
 
             <!-- Cabeçalho do Modal -->
             <div class="modal-header" style="flex-shrink: 0;">
                 <div>
                     <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
                         <span>📦</span>
-                        <span>Lançamento em Lote (Mesmo Departamento)</span>
+                        <span id="tituloLancamentoLote">Lançamento em Lote</span>
                     </h3>
-                    <div style="font-size: 0.82rem; color: #64748b; margin-top: 2px;">
+                    <div id="descricaoLancamentoLote" style="font-size: 0.82rem; color: #64748b; margin-top: 2px;">
                         Informe a data e o departamento uma única vez e adicione quantas peças precisar.
                     </div>
                 </div>
@@ -941,11 +854,15 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
 
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="lote_departamento" style="font-weight: 600; color: #1e293b;">
+                            <label class="form-label" for="buscar_lote_departamento" style="font-weight: 600; color: #1e293b;">
                                 Departamento Atendido *
                                 <span style="font-size: 0.75rem; color: #2563eb; font-weight: normal; margin-left: 6px;">(Aplicado a todas as peças abaixo)</span>
                             </label>
-                            <select name="departamento_id" id="lote_departamento" class="form-control" style="border-color: #3b82f6; font-weight: 600;" required>
+                            <div class="produto-busca-wrapper">
+                                <input type="text" id="buscar_lote_departamento" class="form-control" placeholder="Digite para pesquisar o departamento..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="resultados_departamento_lote" style="border-color: #3b82f6; font-weight: 600;" required>
+                                <div id="resultados_departamento_lote" class="produto-busca-resultados" role="listbox" hidden></div>
+                            </div>
+                            <select name="departamento_id" id="lote_departamento" class="form-control" style="display: none;" hidden>
                                 <option value="">Selecione o departamento...</option>
                                 <?php foreach ($departamentos as $d): ?>
                                     <option value="<?= $d['id'] ?>"><?= htmlspecialchars($d['nome']) ?></option>
@@ -967,7 +884,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <span>🧺</span>
                             <span>Lista de Peças do Lote</span>
                         </div>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="adicionarLinhaLote()" style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                        <button type="button" id="btnAdicionarLinhaLoteTopo" class="btn btn-outline btn-sm" onclick="adicionarLinhaLote()" style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
                             <span>➕</span>
                             <span>Adicionar Linha</span>
                         </button>
@@ -1010,20 +927,68 @@ require_once __DIR__ . '/../includes/header.php';
 
             <!-- Rodapé do Modal -->
             <div class="modal-footer" style="flex-shrink: 0; background: #f8fafc; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between;">
-                <button type="button" class="btn btn-outline" onclick="adicionarLinhaLote()">
+                <button type="button" id="btnAdicionarLinhaLoteRodape" class="btn btn-outline" onclick="adicionarLinhaLote()">
                     ➕ Adicionar Mais Peças
                 </button>
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="btn btn-outline" onclick="fecharModal('modalLancamentoLote')">Cancelar</button>
                     <button type="submit" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px; font-weight: 700;">
                         <span>💾</span>
-                        <span>Gravar Todo o Lote</span>
+                        <span id="textoBotaoSalvarLote">Gravar Todo o Lote</span>
                     </button>
                 </div>
             </div>
         </form>
     </div>
 </div>
+
+<style>
+#btnAdicionarLinhaLoteTopo[hidden],
+#btnAdicionarLinhaLoteRodape[hidden],
+.lote-remover-item[hidden] {
+    display: none !important;
+}
+
+.produto-busca-resultados {
+    position: fixed;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
+    color: var(--text-primary);
+    z-index: 1200;
+}
+
+.produto-busca-resultados[hidden] {
+    display: none;
+}
+
+.produto-busca-opcao {
+    display: block;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.produto-busca-opcao:hover,
+.produto-busca-opcao:focus {
+    background: var(--bg-muted);
+    outline: none;
+}
+
+.produto-busca-vazio {
+    padding: 9px 12px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+</style>
 
 <script>
 // ── Garantia de Funções de Modal Seguras ──────────────────────────────────
@@ -1041,61 +1006,111 @@ function fecharModal(modalId) {
     }
 }
 
-// ── Funções de Lançamento Individual ──────────────────────────────────────
-function abrirModalNovoLancamento() {
-    document.getElementById('formLancamento').reset();
-    document.getElementById('modal_id').value = '';
-    document.getElementById('modalTitulo').innerText = 'Novo Lançamento';
-    document.getElementById('data_lancamento').value = '<?= date('Y-m-d') ?>';
-    document.getElementById('input_quantidade').value = '1';
-    document.getElementById('input_valor_unitario').value = '';
-    document.getElementById('input_valor_total').value = '0.00';
-    abrirModal('modalLancamento');
-}
+function configurarBuscaSelect(input, select, mensagemVazia) {
+    const resultados = input.parentElement.querySelector('.produto-busca-resultados');
+    document.body.appendChild(resultados);
 
-function editarLancamento(item) {
-    document.getElementById('modal_id').value = item.id;
-    document.getElementById('modalTitulo').innerText = 'Editar Lançamento #' + item.id;
-    document.getElementById('data_lancamento').value = item.data_lancamento;
-    document.getElementById('departamento_id').value = item.departamento_id;
-    document.getElementById('select_produto').value = item.produto_id;
-    document.getElementById('input_quantidade').value = item.quantidade;
-    document.getElementById('input_valor_unitario').value = parseFloat(item.valor_unitario).toFixed(2);
-    document.getElementById('input_valor_total').value = parseFloat(item.valor_total).toFixed(2);
-    document.getElementById('observacoes').value = item.observacoes || '';
-    abrirModal('modalLancamento');
-}
-
-function recalcularTotalIndividual() {
-    const qtdInput = document.getElementById('input_quantidade');
-    const valInput = document.getElementById('input_valor_unitario');
-    const totalInput = document.getElementById('input_valor_total');
-    if (!qtdInput || !valInput || !totalInput) return;
-
-    const qtd = parseFloat(qtdInput.value) || 0;
-    const val = parseFloat(valInput.value) || 0;
-    totalInput.value = (qtd * val).toFixed(2);
-}
-
-// Eventos de cálculo do formulário individual
-document.addEventListener('DOMContentLoaded', function() {
-    const selectProd = document.getElementById('select_produto');
-    const valUnit = document.getElementById('input_valor_unitario');
-    const qtd = document.getElementById('input_quantidade');
-
-    if (selectProd && valUnit) {
-        selectProd.addEventListener('change', function() {
-            const opt = selectProd.options[selectProd.selectedIndex];
-            const preco = opt.getAttribute('data-preco');
-            if (preco !== null && preco !== '') {
-                valUnit.value = parseFloat(preco).toFixed(2);
-            }
-            recalcularTotalIndividual();
-        });
+    function normalizarBusca(texto) {
+        return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
     }
 
-    if (valUnit) valUnit.addEventListener('input', recalcularTotalIndividual);
-    if (qtd) qtd.addEventListener('input', recalcularTotalIndividual);
+    function ocultarResultados() {
+        resultados.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        window.removeEventListener('scroll', fecharAoRolar, true);
+        window.removeEventListener('resize', ocultarResultados);
+    }
+
+    function fecharAoRolar(event) {
+        if (!resultados.contains(event.target)) {
+            ocultarResultados();
+        }
+    }
+
+    function selecionarOpcao(opcao) {
+        const valorAnterior = select.value;
+        input.value = opcao.textContent.trim();
+        select.value = opcao.value;
+        input.setCustomValidity('');
+        ocultarResultados();
+
+        if (select.value !== valorAnterior) {
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    function mostrarResultados() {
+        const termo = normalizarBusca(input.value.trim());
+        const campo = input.getBoundingClientRect();
+        const opcoes = Array.from(select.options).filter(function(option) {
+            return option.value && normalizarBusca(option.textContent.trim()).includes(termo);
+        });
+
+        resultados.style.top = (campo.bottom + 2) + 'px';
+        resultados.style.left = campo.left + 'px';
+        resultados.style.width = campo.width + 'px';
+        resultados.replaceChildren();
+        if (opcoes.length === 0) {
+            const vazio = document.createElement('div');
+            vazio.className = 'produto-busca-vazio';
+            vazio.textContent = mensagemVazia;
+            resultados.appendChild(vazio);
+        } else {
+            opcoes.forEach(function(opcao) {
+                const botao = document.createElement('button');
+                botao.type = 'button';
+                botao.className = 'produto-busca-opcao';
+                botao.setAttribute('role', 'option');
+                botao.textContent = opcao.textContent.trim();
+                botao.addEventListener('mousedown', function(event) {
+                    event.preventDefault();
+                });
+                botao.addEventListener('click', function() {
+                    selecionarOpcao(opcao);
+                });
+                resultados.appendChild(botao);
+            });
+        }
+
+        resultados.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        window.addEventListener('scroll', fecharAoRolar, true);
+        window.addEventListener('resize', ocultarResultados);
+    }
+
+    function sincronizarSelecao() {
+        const termo = input.value.trim();
+        const opcao = Array.from(select.options).find(function(option) {
+            return option.value && normalizarBusca(option.textContent.trim()) === normalizarBusca(termo);
+        });
+        const valorAnterior = select.value;
+
+        select.value = opcao ? opcao.value : '';
+        input.setCustomValidity(termo && !opcao ? 'Selecione uma opção válida da lista.' : '');
+
+        if (select.value !== valorAnterior) {
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
+    input.addEventListener('focus', mostrarResultados);
+    input.addEventListener('input', function() {
+        sincronizarSelecao();
+        mostrarResultados();
+    });
+    input.addEventListener('change', sincronizarSelecao);
+    input.addEventListener('blur', function() {
+        window.setTimeout(ocultarResultados, 120);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const selectDepLote = document.getElementById('lote_departamento');
+    const buscaDepLote = document.getElementById('buscar_lote_departamento');
+
+    if (selectDepLote && buscaDepLote) {
+        configurarBuscaSelect(buscaDepLote, selectDepLote, 'Nenhum departamento encontrado.');
+    }
 });
 
 // ── Lógica do Lançamento em Lote ──────────────────────────────────────────
@@ -1109,19 +1124,54 @@ const catalogoProdutos = <?= json_encode(array_map(function($p) {
 
 let contadorLinhasLote = 0;
 
-function abrirModalLancamentoLote() {
+function prepararModalLote(editar) {
     document.getElementById('formLancamentoLote').reset();
-    document.getElementById('lote_data').value = '<?= date('Y-m-d') ?>';
-    
-    // Limpa a tabela
-    const corpo = document.getElementById('tabelaItensLoteCorpo');
-    corpo.innerHTML = '';
+    document.getElementById('buscar_lote_departamento').setCustomValidity('');
+    document.getElementById('lote_editar_id').value = '';
+    document.getElementById('tituloLancamentoLote').textContent = editar ? 'Editar Lançamento' : 'Lançamento em Lote';
+    document.getElementById('descricaoLancamentoLote').textContent = editar
+        ? 'Altere os dados do lançamento selecionado.'
+        : 'Informe a data e o departamento uma única vez e adicione quantas peças precisar.';
+    document.getElementById('textoBotaoSalvarLote').textContent = editar ? 'Salvar Alterações' : 'Gravar Todo o Lote';
+    document.getElementById('btnAdicionarLinhaLoteTopo').hidden = editar;
+    document.getElementById('btnAdicionarLinhaLoteRodape').hidden = editar;
+    document.getElementById('tabelaItensLoteCorpo').innerHTML = '';
     contadorLinhasLote = 0;
+}
+
+function abrirModalLancamentoLote() {
+    prepararModalLote(false);
+    document.getElementById('lote_data').value = '<?= date('Y-m-d') ?>';
 
     // Adiciona 3 linhas iniciais para agilidade
     adicionarLinhaLote();
     adicionarLinhaLote();
     adicionarLinhaLote();
+
+    recalcularTotaisLote();
+    abrirModal('modalLancamentoLote');
+}
+
+function editarLancamentoNoLote(item) {
+    prepararModalLote(true);
+    document.getElementById('lote_editar_id').value = item.id;
+    document.getElementById('lote_data').value = item.data_lancamento;
+    document.getElementById('lote_obs').value = item.observacoes || '';
+
+    const selectDepartamento = document.getElementById('lote_departamento');
+    const buscaDepartamento = document.getElementById('buscar_lote_departamento');
+    selectDepartamento.value = item.departamento_id;
+    buscaDepartamento.value = selectDepartamento.selectedIndex > 0
+        ? selectDepartamento.options[selectDepartamento.selectedIndex].textContent.trim()
+        : '';
+    buscaDepartamento.setCustomValidity('');
+
+    adicionarLinhaLote(
+        item.produto_id,
+        item.quantidade,
+        parseFloat(item.valor_unitario).toFixed(2)
+    );
+    document.querySelector('#tabelaItensLoteCorpo .lote-remover-item').hidden = true;
 
     recalcularTotaisLote();
     abrirModal('modalLancamentoLote');
@@ -1138,18 +1188,26 @@ function adicionarLinhaLote(produtoId = '', quantidade = 1, valorUnitario = '') 
     let optionsHtml = '<option value="">Selecione a peça...</option>';
     catalogoProdutos.forEach(p => {
         const selected = (p.id == produtoId) ? 'selected' : '';
-        const precoFmt = parseFloat(p.valor_padrao).toFixed(2).replace('.', ',');
+        const precoFmt = parseFloat(p.valor_padrao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         optionsHtml += `<option value="${p.id}" data-preco="${p.valor_padrao}" ${selected}>${p.nome} (R$ ${precoFmt})</option>`;
     });
 
     tr.innerHTML = `
         <td style="padding: 8px 10px;">
-            <select name="itens[${idx}][produto_id]" class="form-control lote-produto-select" onchange="aoMudarProdutoLote(this, ${idx})" style="font-size: 0.88rem;" required>
+            <div class="produto-busca-wrapper">
+                <input type="text" class="form-control lote-produto-busca" placeholder="Digite para pesquisar..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="resultados_produto_lote_${idx}" style="font-size: 0.88rem;" required>
+                <div id="resultados_produto_lote_${idx}" class="produto-busca-resultados" role="listbox" hidden></div>
+            </div>
+            <select name="itens[${idx}][produto_id]" class="form-control lote-produto-select" onchange="aoMudarProdutoLote(this, ${idx})" style="display: none;" hidden>
                 ${optionsHtml}
             </select>
         </td>
         <td style="padding: 8px 10px; width: 100px;">
-            <input type="number" name="itens[${idx}][quantidade]" id="lote_qtd_${idx}" class="form-control lote-qtd-input" min="1" value="${quantidade}" oninput="recalcularLinhaLote(${idx})" style="text-align: center; font-size: 0.88rem;" required>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="alterarQuantidadeLote(${idx}, -1)" aria-label="Diminuir quantidade" style="flex: 0 0 24px; width: 24px; min-width: 24px; height: 32px; padding: 0;">-</button>
+                <input type="number" name="itens[${idx}][quantidade]" id="lote_qtd_${idx}" class="form-control lote-qtd-input" min="1" step="1" value="${quantidade}" oninput="recalcularLinhaLote(${idx})" style="flex: 1; min-width: 24px; padding: 6px 0; text-align: center; font-size: 0.88rem;" required>
+                <button type="button" class="btn btn-outline btn-sm" onclick="alterarQuantidadeLote(${idx}, 1)" aria-label="Aumentar quantidade" style="flex: 0 0 24px; width: 24px; min-width: 24px; height: 32px; padding: 0;">+</button>
+            </div>
         </td>
         <td style="padding: 8px 10px; width: 130px;">
             <input type="number" step="0.01" min="0.01" name="itens[${idx}][valor_unitario]" id="lote_val_${idx}" class="form-control lote-val-input" placeholder="0.00" value="${valorUnitario}" oninput="recalcularLinhaLote(${idx})" style="text-align: right; font-size: 0.88rem;" required>
@@ -1158,17 +1216,30 @@ function adicionarLinhaLote(produtoId = '', quantidade = 1, valorUnitario = '') 
             <input type="text" id="lote_subtotal_${idx}" class="form-control" readonly style="background: #f8fafc; font-weight: 700; color: #047857; text-align: right; font-size: 0.88rem;" value="R$ 0,00">
         </td>
         <td style="padding: 8px 6px; width: 50px; text-align: center;">
-            <button type="button" class="btn btn-outline btn-sm btn-icon" onclick="removerLinhaLote(${idx})" style="color: #ef4444; border-color: #fee2e2;" title="Remover item">
+            <button type="button" class="btn btn-outline btn-sm btn-icon lote-remover-item" onclick="removerLinhaLote(${idx})" style="color: #ef4444; border-color: #fee2e2;" title="Remover item">
                 🗑️
             </button>
         </td>
     `;
 
     corpo.appendChild(tr);
+    configurarBuscaSelect(tr.querySelector('.lote-produto-busca'), tr.querySelector('.lote-produto-select'), 'Nenhuma peça encontrada.');
 
     if (produtoId) {
+        const selectProduto = tr.querySelector('.lote-produto-select');
+        const buscaProduto = tr.querySelector('.lote-produto-busca');
+        buscaProduto.value = selectProduto.options[selectProduto.selectedIndex].textContent.trim();
         recalcularLinhaLote(idx);
     }
+}
+
+function alterarQuantidadeLote(idx, incremento) {
+    const input = document.getElementById('lote_qtd_' + idx);
+    if (!input) return;
+
+    const quantidadeAtual = parseInt(input.value, 10) || 1;
+    input.value = Math.max(1, quantidadeAtual + incremento);
+    recalcularLinhaLote(idx);
 }
 
 function aoMudarProdutoLote(selectEl, idx) {
@@ -1243,7 +1314,7 @@ function validarEnvioLote(event) {
     const depSelect = document.getElementById('lote_departamento');
     if (!depSelect.value) {
         alert('Por favor, selecione o Departamento antes de salvar o lote.');
-        depSelect.focus();
+        document.getElementById('buscar_lote_departamento').focus();
         event.preventDefault();
         return false;
     }
@@ -1256,6 +1327,13 @@ function validarEnvioLote(event) {
 
     if (itensComProduto === 0) {
         alert('Selecione pelo menos uma peça na lista para salvar o lote.');
+        document.querySelector('#tabelaItensLoteCorpo .lote-produto-busca').focus();
+        event.preventDefault();
+        return false;
+    }
+
+    if (document.getElementById('lote_editar_id').value && selects.length !== 1) {
+        alert('A edição deve conter exatamente uma peça.');
         event.preventDefault();
         return false;
     }

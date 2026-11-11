@@ -252,9 +252,12 @@ $todosProdutos      = $pdo->query("SELECT id, nome, valor_padrao FROM produtos W
 // CONSULTA MODELO 1: DETALHADO POR DEPARTAMENTO
 // ==========================================================================
 $sqlMod1 = "
-    SELECT l.*, 
+    SELECT l.data_lancamento,
            COALESCE(d.nome, l.departamento_nome_snapshot, 'Setor Removido') AS departamento_nome, 
-           COALESCE(p.nome, l.produto_nome_snapshot, 'Peça Removida') AS produto_nome
+           COALESCE(p.nome, l.produto_nome_snapshot, 'Peça Removida') AS produto_nome,
+           SUM(l.quantidade) AS quantidade,
+           SUM(l.valor_total) AS valor_total,
+           SUM(l.valor_total) / NULLIF(SUM(l.quantidade), 0) AS valor_unitario
     FROM lancamentos l
     LEFT JOIN departamentos d ON d.id = l.departamento_id
     LEFT JOIN produtos p ON p.id = l.produto_id
@@ -271,14 +274,22 @@ if ($prodFiltro > 0) {
     $paramsMod1[] = $prodFiltro;
 }
 
+$sqlMod1 .= "
+    GROUP BY l.departamento_id,
+             COALESCE(d.nome, l.departamento_nome_snapshot, 'Setor Removido'),
+             l.produto_id,
+             COALESCE(p.nome, l.produto_nome_snapshot, 'Peça Removida'),
+             l.data_lancamento
+";
+
 // Ordenação
 switch ($ordemFiltro) {
-    case 'valor_asc':   $sqlMod1 .= " ORDER BY d.nome ASC, l.valor_total ASC"; break;
-    case 'pecas_desc':  $sqlMod1 .= " ORDER BY d.nome ASC, l.quantidade DESC"; break;
-    case 'nome_asc':    $sqlMod1 .= " ORDER BY d.nome ASC, p.nome ASC"; break;
-    case 'data_desc':   $sqlMod1 .= " ORDER BY d.nome ASC, l.data_lancamento DESC"; break;
+    case 'valor_asc':   $sqlMod1 .= " ORDER BY departamento_nome ASC, valor_total ASC, data_lancamento DESC, produto_nome ASC"; break;
+    case 'pecas_desc':  $sqlMod1 .= " ORDER BY departamento_nome ASC, quantidade DESC, data_lancamento DESC, produto_nome ASC"; break;
+    case 'nome_asc':    $sqlMod1 .= " ORDER BY departamento_nome ASC, produto_nome ASC, data_lancamento DESC"; break;
+    case 'data_desc':   $sqlMod1 .= " ORDER BY departamento_nome ASC, data_lancamento DESC, produto_nome ASC"; break;
     case 'valor_desc':
-    default:            $sqlMod1 .= " ORDER BY d.nome ASC, l.valor_total DESC"; break;
+    default:            $sqlMod1 .= " ORDER BY departamento_nome ASC, valor_total DESC, data_lancamento DESC, produto_nome ASC"; break;
 }
 
 $stmtMod1 = $pdo->prepare($sqlMod1);
@@ -428,7 +439,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
 
     if ($modelo === 'departamento_detalhado') {
-        fputcsv($output, ['Departamento', 'Peça', 'Data', 'Quantidade', 'Valor Unitário (R$)', 'Total (R$)']);
+        fputcsv($output, ['Departamento', 'Peça', 'Data', 'Quantidade', 'Valor Unitário Médio (R$)', 'Total (R$)']);
         foreach ($relatorioAgrupado as $dep => $dados) {
             foreach ($dados['itens'] as $it) {
                 fputcsv($output, [
@@ -1526,11 +1537,11 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
                     EXTRATO DETALHADO POR DEPARTAMENTO &bull; <?= htmlspecialchars($periodoLabel) ?>
                 </div>
                 <div style="font-size: 0.74rem; color: #94a3b8;">
-                    Relação item por item com quantidades, datas e valores unitários
+                    Peças e quantidades consolidadas por data, com valores unitários médios
                 </div>
             </div>
             <span style="font-size: 0.74rem; background: #334155; padding: 2px 8px; border-radius: 4px; font-weight: 600;">
-                <?= count($lancamentosMod1) ?> <?= count($lancamentosMod1) === 1 ? 'lançamento registrado' : 'lançamentos registrados' ?>
+                <?= count($lancamentosMod1) ?> <?= count($lancamentosMod1) === 1 ? 'item consolidado' : 'itens consolidados' ?>
             </span>
         </div>
 
@@ -1541,7 +1552,7 @@ $temLogoSysRel = storedImageExists($sysConfigRel['sistema_logo'] ?? '');
                         <th>Departamento / Peça</th>
                         <th style="width: 110px; text-align: center;">Data</th>
                         <th style="width: 100px; text-align: center;">Qtde</th>
-                        <th style="width: 130px; text-align: right;">Unitário (R$)</th>
+                        <th style="width: 130px; text-align: right;">Unitário Médio (R$)</th>
                         <th style="width: 140px; text-align: right;">Subtotal (R$)</th>
                     </tr>
                 </thead>

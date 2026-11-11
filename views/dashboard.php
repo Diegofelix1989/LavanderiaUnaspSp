@@ -126,7 +126,7 @@ $stmtTopProd = $pdo->prepare("
 $stmtTopProd->execute(array_merge([$inicioPeriodo, $fimPeriodo], $paramsFiltros));
 $topProds = $stmtTopProd->fetchAll();
 
-// ── Evolução diária do período (para sparkline) ──────────────────────────────
+// ── Evolução diária do período ───────────────────────────────────────────────
 $stmtDiario = $pdo->prepare("
     SELECT
         data_lancamento,
@@ -205,14 +205,22 @@ $stmtMeses = $pdo->query("
 ");
 $mesesDisponiveis = $stmtMeses->fetchAll();
 
-// Prepara dados JSON para o gráfico
+// Prepara um valor para cada dia do mês, inclusive dias sem lançamentos.
+$valoresPorDia = [];
+foreach ($evolucaoDiaria as $dia) {
+    $numeroDia = (int)date('j', strtotime($dia['data_lancamento']));
+    $valoresPorDia[$numeroDia] = (float)$dia['valor_dia'];
+}
+
+$quantidadeDiasMes = (int)date('t', strtotime($inicioPeriodo));
 $chartLabels = [];
 $chartValues = [];
 $maxValor = 0;
-foreach ($evolucaoDiaria as $d) {
-    $chartLabels[] = date('d/m', strtotime($d['data_lancamento']));
-    $chartValues[] = round((float)$d['valor_dia'], 2);
-    if ((float)$d['valor_dia'] > $maxValor) { $maxValor = (float)$d['valor_dia']; }
+for ($dia = 1; $dia <= $quantidadeDiasMes; $dia++) {
+    $valorDia = round((float)($valoresPorDia[$dia] ?? 0), 2);
+    $chartLabels[] = sprintf('%02d', $dia);
+    $chartValues[] = $valorDia;
+    if ($valorDia > $maxValor) { $maxValor = $valorDia; }
 }
 
 $nomesMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -366,7 +374,7 @@ function varBadge($v) {
                 <span>📈</span>
                 <span>Evolução Diária — <?= $nomesMeses[$mesSel - 1] ?> <?= $anoSel ?></span>
             </div>
-            <?php if (!empty($chartValues)): ?>
+            <?php if (!empty($evolucaoDiaria)): ?>
             <span style="font-size:.82rem;color:#64748b;">
                 Pico: R$ <?= number_format(max($chartValues), 2, ',', '.') ?>
             </span>
@@ -376,37 +384,39 @@ function varBadge($v) {
             <?php if (empty($evolucaoDiaria)): ?>
                 <div style="text-align:center;padding:40px;color:#94a3b8;">
                     <div style="font-size:40px;margin-bottom:10px;">📭</div>
-                    <p>Nenhum lançamento neste período.</p>
-                </div>
-            <?php else: ?>
-                <!-- Gráfico de barras SVG-like com canvas HTML/CSS -->
-                <div id="chartContainer" style="position:relative;height:200px;display:flex;align-items:flex-end;gap:4px;overflow-x:auto;overflow-y:hidden;padding-bottom:28px;">
-                    <?php
-                    $maxV = max(array_column($evolucaoDiaria, 'valor_dia')) ?: 1;
-                    foreach ($evolucaoDiaria as $dia):
-                        $perc = round(((float)$dia['valor_dia'] / $maxV) * 172);
-                        $label = date('d', strtotime($dia['data_lancamento']));
-                        $tooltip = date('d/m', strtotime($dia['data_lancamento'])) . ': R$ ' . number_format((float)$dia['valor_dia'], 2, ',', '.');
-                    ?>
-                    <div class="chart-bar-wrap" title="<?= htmlspecialchars($tooltip) ?>" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:28px;cursor:pointer;">
-                        <div class="chart-bar" style="
-                            width:100%;
-                            height:<?= $perc ?>px;
-                            background:linear-gradient(180deg,#3b82f6,#06b6d4);
-                            border-radius:4px 4px 0 0;
-                            transition:opacity .15s;
-                            position:relative;
-                        "></div>
-                        <span style="font-size:10px;color:#94a3b8;white-space:nowrap;"><?= $label ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#94a3b8;margin-top:4px;">
-                    <span>R$ 0</span>
-                    <span>R$ <?= number_format($maxV / 2, 0, ',', '.') ?></span>
-                    <span>R$ <?= number_format($maxV, 0, ',', '.') ?></span>
+                    <p>Nenhum lançamento neste mês; os dias aparecerão com valor zero.</p>
                 </div>
             <?php endif; ?>
+            <!-- Gráfico de barras SVG-like com canvas HTML/CSS -->
+            <div id="chartContainer" style="position:relative;height:200px;display:flex;align-items:flex-end;gap:4px;overflow-x:auto;overflow-y:hidden;padding-bottom:28px;">
+                <?php
+                $maxV = $maxValor;
+                foreach ($chartValues as $indice => $valorDia):
+                    $dia = $indice + 1;
+                    $perc = $maxV > 0 && $valorDia > 0
+                        ? max(2, round(($valorDia / $maxV) * 172))
+                        : 0;
+                    $label = $chartLabels[$indice];
+                    $tooltip = sprintf('%02d/%02d', $dia, $mesSel) . ': R$ ' . number_format($valorDia, 2, ',', '.');
+                ?>
+                <div class="chart-bar-wrap" title="<?= htmlspecialchars($tooltip) ?>" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:28px;cursor:pointer;">
+                    <div class="chart-bar" style="
+                        width:100%;
+                        height:<?= $perc ?>px;
+                        background:linear-gradient(180deg,#3b82f6,#06b6d4);
+                        border-radius:4px 4px 0 0;
+                        transition:opacity .15s;
+                        position:relative;
+                    "></div>
+                    <span style="font-size:10px;color:#94a3b8;white-space:nowrap;"><?= $label ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#94a3b8;margin-top:4px;">
+                <span>R$ 0</span>
+                <span>R$ <?= number_format($maxV / 2, 0, ',', '.') ?></span>
+                <span>R$ <?= number_format($maxV, 0, ',', '.') ?></span>
+            </div>
         </div>
     </div>
 
