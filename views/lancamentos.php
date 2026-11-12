@@ -899,7 +899,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <thead style="background: #f1f5f9; border-bottom: 2px solid #e2e8f0;">
                                 <tr>
                                     <th style="padding: 10px 12px; text-align: left; font-size: 0.8rem; color: #475569; font-weight: 700;">Peça / Produto *</th>
-                                    <th style="padding: 10px 12px; text-align: center; font-size: 0.8rem; color: #475569; font-weight: 700; width: 100px;">Qtd *</th>
+                                    <th style="padding: 10px 12px; text-align: center; font-size: 0.8rem; color: #475569; font-weight: 700; width: 180px;">Qtd *</th>
                                     <th style="padding: 10px 12px; text-align: right; font-size: 0.8rem; color: #475569; font-weight: 700; width: 130px;">Valor Unit. *</th>
                                     <th style="padding: 10px 12px; text-align: right; font-size: 0.8rem; color: #475569; font-weight: 700; width: 140px;">Subtotal</th>
                                     <th style="padding: 10px 6px; text-align: center; font-size: 0.8rem; color: #475569; font-weight: 700; width: 50px;"></th>
@@ -991,6 +991,69 @@ require_once __DIR__ . '/../includes/header.php';
     padding: 9px 12px;
     color: var(--text-secondary);
     font-size: 0.875rem;
+}
+
+.lote-qtd-controles {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.lote-qtd-controles .lote-qtd-input {
+    flex: 0 0 76px;
+    width: 76px;
+    min-width: 76px;
+    height: 36px;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+.lote-qtd-step,
+.lote-qtd-grade-abrir {
+    flex: 0 0 30px;
+    width: 30px;
+    min-width: 30px;
+    height: 36px;
+    padding: 0;
+}
+
+.lote-qtd-grade {
+    position: fixed;
+    z-index: 1250;
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 4px;
+    width: min(320px, calc(100vw - 24px));
+    max-height: min(300px, calc(100vh - 24px));
+    overflow-y: auto;
+    padding: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+}
+
+.lote-qtd-grade[hidden] {
+    display: none;
+}
+
+.lote-qtd-grade button {
+    min-height: 28px;
+    padding: 2px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.lote-qtd-grade button:hover,
+.lote-qtd-grade button:focus {
+    border-color: var(--primary);
+    background: var(--bg-muted);
+    outline: none;
 }
 </style>
 
@@ -1129,6 +1192,10 @@ const catalogoProdutos = <?= json_encode(array_map(function($p) {
 let contadorLinhasLote = 0;
 
 function prepararModalLote(editar) {
+    fecharSeletorQuantidadeLote();
+    document.querySelectorAll('.lote-qtd-grade').forEach(function(grade) {
+        grade.remove();
+    });
     document.getElementById('formLancamentoLote').reset();
     document.getElementById('buscar_lote_departamento').setCustomValidity('');
     document.getElementById('lote_editar_id').value = '';
@@ -1147,9 +1214,7 @@ function abrirModalLancamentoLote() {
     prepararModalLote(false);
     document.getElementById('lote_data').value = '<?= date('Y-m-d') ?>';
 
-    // Adiciona 3 linhas iniciais para agilidade
-    adicionarLinhaLote();
-    adicionarLinhaLote();
+    // Começa com uma linha; outras podem ser adicionadas conforme necessário.
     adicionarLinhaLote();
 
     recalcularTotaisLote();
@@ -1206,12 +1271,14 @@ function adicionarLinhaLote(produtoId = '', quantidade = 1, valorUnitario = '') 
                 ${optionsHtml}
             </select>
         </td>
-        <td style="padding: 8px 10px; width: 100px;">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="alterarQuantidadeLote(${idx}, -1)" aria-label="Diminuir quantidade" style="flex: 0 0 24px; width: 24px; min-width: 24px; height: 32px; padding: 0;">-</button>
-                <input type="number" name="itens[${idx}][quantidade]" id="lote_qtd_${idx}" class="form-control lote-qtd-input" min="1" step="1" value="${quantidade}" oninput="recalcularLinhaLote(${idx})" style="flex: 1; min-width: 24px; padding: 6px 0; text-align: center; font-size: 0.88rem;" required>
-                <button type="button" class="btn btn-outline btn-sm" onclick="alterarQuantidadeLote(${idx}, 1)" aria-label="Aumentar quantidade" style="flex: 0 0 24px; width: 24px; min-width: 24px; height: 32px; padding: 0;">+</button>
+        <td style="padding: 8px 10px; width: 180px;">
+            <div class="lote-qtd-controles">
+                <button type="button" class="btn btn-outline btn-sm lote-qtd-step" onclick="alterarQuantidadeLote(${idx}, -1)" aria-label="Diminuir quantidade">-</button>
+                <input type="number" name="itens[${idx}][quantidade]" id="lote_qtd_${idx}" class="form-control lote-qtd-input" min="1" step="1" value="${quantidade}" oninput="recalcularLinhaLote(${idx})" required>
+                <button type="button" class="btn btn-outline btn-sm lote-qtd-step" onclick="alterarQuantidadeLote(${idx}, 1)" aria-label="Aumentar quantidade">+</button>
+                <button type="button" class="btn btn-outline btn-sm lote-qtd-grade-abrir" id="lote_qtd_grade_btn_${idx}" aria-label="Abrir seletor de quantidade" aria-haspopup="dialog" aria-expanded="false" aria-controls="lote_qtd_grade_${idx}" onclick="alternarSeletorQuantidadeLote(${idx}, event)">▦</button>
             </div>
+            <div id="lote_qtd_grade_${idx}" class="lote-qtd-grade" role="dialog" aria-label="Selecionar quantidade de 1 a 100" hidden></div>
         </td>
         <td style="padding: 8px 10px; width: 130px;">
             <input type="number" step="0.01" min="0.01" name="itens[${idx}][valor_unitario]" id="lote_val_${idx}" class="form-control lote-val-input" placeholder="0.00" value="${valorUnitario}" oninput="recalcularLinhaLote(${idx})" style="text-align: right; font-size: 0.88rem;" required>
@@ -1228,6 +1295,18 @@ function adicionarLinhaLote(produtoId = '', quantidade = 1, valorUnitario = '') 
 
     corpo.appendChild(tr);
     configurarBuscaSelect(tr.querySelector('.lote-produto-busca'), tr.querySelector('.lote-produto-select'), 'Nenhuma peça encontrada.');
+    const gradeQuantidade = tr.querySelector('.lote-qtd-grade');
+    gradeQuantidade.innerHTML = Array.from({ length: 100 }, function(_, indice) {
+        const quantidadeGrade = indice + 1;
+        return `<button type="button" data-quantidade="${quantidadeGrade}" aria-label="${quantidadeGrade}">${quantidadeGrade}</button>`;
+    }).join('');
+    gradeQuantidade.addEventListener('click', function(event) {
+        const opcao = event.target.closest('[data-quantidade]');
+        if (opcao) {
+            selecionarQuantidadeLote(idx, parseInt(opcao.dataset.quantidade, 10));
+        }
+    });
+    document.body.appendChild(gradeQuantidade);
 
     if (produtoId) {
         const selectProduto = tr.querySelector('.lote-produto-select');
@@ -1236,6 +1315,69 @@ function adicionarLinhaLote(produtoId = '', quantidade = 1, valorUnitario = '') 
         recalcularLinhaLote(idx);
     }
 }
+
+let seletorQuantidadeLoteAberto = null;
+
+function fecharSeletorQuantidadeLote() {
+    if (!seletorQuantidadeLoteAberto) return;
+
+    seletorQuantidadeLoteAberto.grade.hidden = true;
+    seletorQuantidadeLoteAberto.botao.setAttribute('aria-expanded', 'false');
+    seletorQuantidadeLoteAberto = null;
+}
+
+function alternarSeletorQuantidadeLote(idx, event) {
+    event.stopPropagation();
+    const botao = document.getElementById('lote_qtd_grade_btn_' + idx);
+    const grade = document.getElementById('lote_qtd_grade_' + idx);
+
+    if (!botao || !grade) return;
+    if (seletorQuantidadeLoteAberto && seletorQuantidadeLoteAberto.grade === grade) {
+        fecharSeletorQuantidadeLote();
+        return;
+    }
+
+    fecharSeletorQuantidadeLote();
+    grade.hidden = false;
+    botao.setAttribute('aria-expanded', 'true');
+
+    const retangulo = botao.getBoundingClientRect();
+    const largura = grade.offsetWidth;
+    const altura = grade.offsetHeight;
+    const esquerda = Math.max(12, Math.min(retangulo.left, window.innerWidth - largura - 12));
+    const topo = retangulo.bottom + altura <= window.innerHeight - 12
+        ? retangulo.bottom + 6
+        : Math.max(12, retangulo.top - altura - 6);
+
+    grade.style.left = esquerda + 'px';
+    grade.style.top = topo + 'px';
+    seletorQuantidadeLoteAberto = { botao: botao, grade: grade };
+}
+
+function selecionarQuantidadeLote(idx, quantidade) {
+    const input = document.getElementById('lote_qtd_' + idx);
+    if (!input) return;
+
+    input.value = quantidade;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    fecharSeletorQuantidadeLote();
+    input.focus();
+}
+
+document.addEventListener('click', function(event) {
+    if (seletorQuantidadeLoteAberto
+        && !seletorQuantidadeLoteAberto.grade.contains(event.target)
+        && !seletorQuantidadeLoteAberto.botao.contains(event.target)) {
+        fecharSeletorQuantidadeLote();
+    }
+});
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') fecharSeletorQuantidadeLote();
+});
+
+window.addEventListener('scroll', fecharSeletorQuantidadeLote, true);
+window.addEventListener('resize', fecharSeletorQuantidadeLote);
 
 function alterarQuantidadeLote(idx, incremento) {
     const input = document.getElementById('lote_qtd_' + idx);
@@ -1284,6 +1426,13 @@ function removerLinhaLote(idx) {
     }
 
     if (linha) {
+        const gradeQuantidade = document.getElementById('lote_qtd_grade_' + idx);
+        if (gradeQuantidade) {
+            if (seletorQuantidadeLoteAberto && seletorQuantidadeLoteAberto.grade === gradeQuantidade) {
+                fecharSeletorQuantidadeLote();
+            }
+            gradeQuantidade.remove();
+        }
         linha.remove();
         recalcularTotaisLote();
     }
