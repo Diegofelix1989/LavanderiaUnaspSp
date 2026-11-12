@@ -5,6 +5,17 @@ require_once __DIR__ . '/../includes/auth.php';
 exigirPermissao('lancamentos_ver');
 $pdo = getDB();
 
+$parametrosRetorno = [];
+foreach (['mes', 'data', 'cadastro_hoje', 'departamento_id', 'produto_id', 'pagina'] as $parametro) {
+    if (isset($_GET[$parametro]) && is_scalar($_GET[$parametro])) {
+        $parametrosRetorno[$parametro] = (string)$_GET[$parametro];
+    }
+}
+$urlRetornoLancamentos = 'lancamentos.php';
+if ($parametrosRetorno) {
+    $urlRetornoLancamentos .= '?' . http_build_query($parametrosRetorno);
+}
+
 // Processamento de Ações: Lançar em Lote e Mover para a Lixeira
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!validarTokenCsrf()) {
@@ -14,7 +25,50 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
     $acao = $_POST['acao'] ?? '';
 
-    if ($acao === 'salvar_lote') {
+    if ($acao === 'editar_data_peca') {
+        exigirPermissao('lancamentos_editar');
+
+        $id = (int)($_POST['id'] ?? 0);
+        $data = is_string($_POST['data_lancamento'] ?? null) ? trim($_POST['data_lancamento']) : '';
+        $produtoId = (int)($_POST['produto_id'] ?? 0);
+        $dataObj = DateTime::createFromFormat('!Y-m-d', $data);
+
+        if ($id <= 0 || !$dataObj || $dataObj->format('Y-m-d') !== $data) {
+            definirAlerta('danger', 'Informe um lançamento e uma data válidos.');
+            header('Location: ' . $urlRetornoLancamentos);
+            exit;
+        }
+
+        $stmtProduto = $pdo->prepare("SELECT id FROM produtos WHERE id = ? AND deleted_at IS NULL");
+        $stmtProduto->execute([$produtoId]);
+        if ($produtoId <= 0 || !$stmtProduto->fetchColumn()) {
+            definirAlerta('danger', 'Selecione uma peça válida e ativa.');
+            header('Location: ' . $urlRetornoLancamentos);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE lancamentos
+            SET data_lancamento = ?, produto_id = ?,
+                produto_nome_snapshot = (SELECT nome FROM produtos WHERE id = ?)
+            WHERE id = ? AND deleted_at IS NULL
+        ");
+        $stmt->execute([$data, $produtoId, $produtoId, $id]);
+
+        if ($stmt->rowCount() === 0) {
+            $stmtExistencia = $pdo->prepare("SELECT id FROM lancamentos WHERE id = ? AND deleted_at IS NULL");
+            $stmtExistencia->execute([$id]);
+            if (!$stmtExistencia->fetchColumn()) {
+                definirAlerta('danger', 'O lançamento não foi encontrado ou já foi removido.');
+                header('Location: ' . $urlRetornoLancamentos);
+                exit;
+            }
+        }
+
+        definirAlerta('success', 'Data e peça do lançamento atualizadas com sucesso.');
+        header('Location: ' . $urlRetornoLancamentos);
+        exit;
+    } elseif ($acao === 'salvar_lote') {
         $editarId = (int)($_POST['editar_id'] ?? 0);
         exigirPermissao($editarId > 0 ? 'lancamentos_editar' : 'lancamentos_criar');
 
@@ -161,8 +215,10 @@ $pageTitle  = 'Lançamentos';
 $filtroMes   = is_string($_GET['mes'] ?? null) ? trim($_GET['mes']) : '';
 $filtroData  = is_string($_GET['data'] ?? null) ? trim($_GET['data']) : '';
 $periodoInformado = array_key_exists('data', $_GET) || array_key_exists('mes', $_GET);
+$filtroCadastroHoje = (($_GET['cadastro_hoje'] ?? '') === '1')
+    || (!$periodoInformado && !array_key_exists('cadastro_hoje', $_GET));
 $filtroDep   = is_string($_GET['departamento_id'] ?? null) ? $_GET['departamento_id'] : '';
-$filtroBusca = is_string($_GET['busca'] ?? null) ? trim($_GET['busca']) : '';
+$filtroProdutoId = is_string($_GET['produto_id'] ?? null) ? trim($_GET['produto_id']) : '';
 
 if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $filtroMes)) {
     $filtroMes = '';
@@ -171,13 +227,11 @@ $dataObj = DateTime::createFromFormat('Y-m-d', $filtroData);
 if (!$dataObj || $dataObj->format('Y-m-d') !== $filtroData) {
     $filtroData = '';
 }
-if (!$periodoInformado) {
-    $filtroData = date('Y-m-d');
-}
+$filtroCadastroHoje = $filtroCadastroHoje && $filtroData === '' && $filtroMes === '';
 $filtroDep = ctype_digit((string)$filtroDep) ? (string)(int)$filtroDep : '';
-if (mb_strlen($filtroBusca) > 100) {
-    $filtroBusca = mb_substr($filtroBusca, 0, 100);
-}
+$filtroProdutoId = ctype_digit($filtroProdutoId) && (int)$filtroProdutoId > 0
+    ? (string)(int)$filtroProdutoId
+    : '';
 
 // Filtros base compartilhados pela listagem e pelo calendário
 $whereBase  = "l.deleted_at IS NULL";
@@ -187,16 +241,19 @@ if ($filtroDep !== '') {
     $whereBase .= " AND l.departamento_id = ?";
     $paramsBase[] = (int)$filtroDep;
 }
-if ($filtroBusca !== '') {
-    $whereBase .= " AND (COALESCE(d.nome, l.departamento_nome_snapshot) LIKE ? OR COALESCE(p.nome, l.produto_nome_snapshot) LIKE ?)";
-    $paramsBase[] = "%$filtroBusca%";
-    $paramsBase[] = "%$filtroBusca%";
+if ($filtroProdutoId !== '') {
+    $whereBase .= " AND l.produto_id = ?";
+    $paramsBase[] = (int)$filtroProdutoId;
 }
 
 // Dia específico tem prioridade sobre o mês
 $sqlWhere = "WHERE $whereBase";
 $params = $paramsBase;
-if ($filtroData !== '') {
+$orderLancamentos = 'l.data_lancamento DESC, l.id DESC';
+if ($filtroCadastroHoje) {
+    $sqlWhere .= " AND l.criado_em >= CURDATE() AND l.criado_em < DATE_ADD(CURDATE(), INTERVAL 1 DAY)";
+    $orderLancamentos = 'l.criado_em DESC, l.id DESC';
+} elseif ($filtroData !== '') {
     $sqlWhere .= " AND l.data_lancamento = ?";
     $params[] = $filtroData;
 } elseif ($filtroMes !== '') {
@@ -230,7 +287,9 @@ $carregarDiasCalendario = function (string $mes) use ($pdo, $whereBase, $paramsB
     return $dias;
 };
 
-$mesCalendario = $filtroData !== '' ? substr($filtroData, 0, 7) : $filtroMes;
+$mesCalendario = $filtroData !== ''
+    ? substr($filtroData, 0, 7)
+    : ($filtroMes !== '' ? $filtroMes : ($filtroCadastroHoje ? date('Y-m') : ''));
 if ($mesCalendario === '') {
     $stmtUltimoMes = $pdo->query("
         SELECT DATE_FORMAT(MAX(data_lancamento), '%Y-%m')
@@ -267,7 +326,10 @@ $labelMesCalendario = ucfirst($nomeMesCalendario) . ' de ' . ($partesMesCalendar
 
 $periodoSelecionadoLabel = 'Todo o período';
 $periodoSelecionadoHint  = 'Sem filtro de data';
-if ($filtroData !== '') {
+if ($filtroCadastroHoje) {
+    $periodoSelecionadoLabel = 'Cadastrados hoje';
+    $periodoSelecionadoHint  = 'Data de inclusão';
+} elseif ($filtroData !== '') {
     $periodoSelecionadoLabel = date('d/m/Y', strtotime($filtroData));
     $periodoSelecionadoHint  = 'Dia selecionado';
 } elseif ($filtroMes !== '') {
@@ -309,7 +371,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN produtos p ON p.id = l.produto_id
     LEFT JOIN usuarios u ON u.id = l.usuario_id
     $sqlWhere
-    ORDER BY l.data_lancamento DESC, l.id DESC
+    ORDER BY $orderLancamentos
     LIMIT $itensPorPagina OFFSET $offset
 ");
 $stmt->execute($params);
@@ -319,6 +381,22 @@ $lancamentos = $stmt->fetchAll();
 $departamentos = $pdo->query("SELECT * FROM departamentos WHERE deleted_at IS NULL ORDER BY nome ASC")->fetchAll();
 $produtos = $pdo->query("SELECT * FROM produtos WHERE deleted_at IS NULL ORDER BY nome ASC")->fetchAll();
 
+$queryAcaoInline = $parametrosRetorno;
+$queryAcaoInline['mes'] = $filtroMes;
+$queryAcaoInline['data'] = $filtroData;
+$queryAcaoInline['cadastro_hoje'] = $filtroCadastroHoje ? '1' : '';
+if ($filtroDep !== '') {
+    $queryAcaoInline['departamento_id'] = $filtroDep;
+} else {
+    unset($queryAcaoInline['departamento_id']);
+}
+if ($filtroProdutoId !== '') {
+    $queryAcaoInline['produto_id'] = $filtroProdutoId;
+} else {
+    unset($queryAcaoInline['produto_id']);
+}
+$urlAcaoInline = 'lancamentos.php?' . http_build_query($queryAcaoInline);
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -327,6 +405,12 @@ require_once __DIR__ . '/../includes/header.php';
    FILTROS E CALENDÁRIO — Página de Lançamentos
    ========================================================================== */
 .main-content { min-width: 0; }
+
+.lancamentos-table th,
+.lancamentos-table td {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
 
 .lanc-filter-card {
     background: #ffffff;
@@ -469,6 +553,7 @@ require_once __DIR__ . '/../includes/header.php';
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 8px;
     padding-bottom: 10px;
     border-bottom: 1px solid #f1f5f9;
@@ -571,7 +656,7 @@ require_once __DIR__ . '/../includes/header.php';
     cursor: pointer;
 }
 .cal-foot-link:hover { color: #1d4ed8; }
-.cal-foot-actions { display: flex; gap: 6px; }
+.cal-foot-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .cal-foot-actions .btn { font-size: 0.72rem; padding: 5px 9px; }
 
 @media (max-width: 1100px) {
@@ -634,6 +719,7 @@ require_once __DIR__ . '/../includes/header.php';
     <form method="GET" action="lancamentos.php" class="lanc-filter-form" id="formFiltrosLanc">
         <input type="hidden" name="mes" id="filtro_mes_hidden" value="<?= htmlspecialchars($filtroMes) ?>">
         <input type="hidden" name="data" id="filtro_data_hidden" value="<?= htmlspecialchars($filtroData) ?>">
+        <input type="hidden" name="cadastro_hoje" id="filtro_cadastro_hoje" value="<?= $filtroCadastroHoje ? '1' : '' ?>">
 
         <div class="lanc-filter-field">
             <label class="form-label" for="calTrigger">Período</label>
@@ -670,6 +756,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <div class="cal-foot">
                         <button type="button" class="cal-foot-link" id="calTodoPeriodo">Todo o período</button>
                         <div class="cal-foot-actions">
+                            <button type="button" class="btn btn-outline btn-sm" id="calCadastroHoje">Cadastrados hoje</button>
                             <button type="button" class="btn btn-outline btn-sm" id="calHoje">Hoje</button>
                             <button type="button" class="btn btn-primary btn-sm" id="calMesInteiro">Mês inteiro</button>
                         </div>
@@ -679,8 +766,15 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
 
         <div class="lanc-filter-field">
-            <label class="form-label" for="filtro_departamento">Departamento</label>
-            <select name="departamento_id" id="filtro_departamento" class="form-control">
+            <label class="form-label" for="buscar_filtro_departamento">Departamento</label>
+            <div class="produto-busca-wrapper">
+                <input type="search" id="buscar_filtro_departamento" class="form-control"
+                       placeholder="Todos os departamentos" autocomplete="off"
+                       role="combobox" aria-autocomplete="list" aria-expanded="false"
+                       aria-controls="resultados_filtro_departamento">
+                <div id="resultados_filtro_departamento" class="produto-busca-resultados" role="listbox" hidden></div>
+            </div>
+            <select name="departamento_id" id="filtro_departamento" class="form-control" style="display: none;" hidden>
                 <option value="">Todos os Departamentos</option>
                 <?php foreach ($departamentos as $d): ?>
                     <option value="<?= (int)$d['id'] ?>" <?= (string)$d['id'] === $filtroDep ? 'selected' : '' ?>>
@@ -691,14 +785,22 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
 
         <div class="lanc-filter-field">
-            <label class="form-label" for="filtro_busca">Buscar peça / departamento</label>
-            <div class="lanc-search-wrap">
-                <span class="lanc-search-icon">🔍</span>
-                <input type="search" name="busca" id="filtro_busca"
-                       value="<?= htmlspecialchars($filtroBusca) ?>"
-                       placeholder="Digite e aguarde..."
-                       class="form-control" maxlength="100" autocomplete="off">
+            <label class="form-label" for="buscar_filtro_produto">Peça</label>
+            <div class="produto-busca-wrapper">
+                <input type="search" id="buscar_filtro_produto" class="form-control"
+                       placeholder="Todas as peças" autocomplete="off"
+                       role="combobox" aria-autocomplete="list" aria-expanded="false"
+                       aria-controls="resultados_filtro_produto">
+                <div id="resultados_filtro_produto" class="produto-busca-resultados" role="listbox" hidden></div>
             </div>
+            <select name="produto_id" id="filtro_produto" class="form-control" style="display: none;" hidden>
+                <option value="">Todas as peças</option>
+                <?php foreach ($produtos as $produto): ?>
+                    <option value="<?= (int)$produto['id'] ?>" <?= (string)$produto['id'] === $filtroProdutoId ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($produto['nome']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
         </div>
 
         <a href="lancamentos.php" class="lanc-clear-btn" title="Limpar todos os filtros">
@@ -721,7 +823,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 
     <div class="table-responsive">
-        <table class="custom-table">
+        <table class="custom-table lancamentos-table">
             <thead>
                 <tr>
                     <th style="width: 120px;">Data</th>
@@ -743,10 +845,12 @@ require_once __DIR__ . '/../includes/header.php';
                     </tr>
                 <?php else: ?>
                     <?php foreach ($lancamentos as $item): ?>
-                        <tr>
-                            <td><?= date('d/m/Y', strtotime($item['data_lancamento'])) ?></td>
+                        <tr id="lancamento_linha_<?= (int)$item['id'] ?>">
+                            <td class="lanc-data-cell">
+                                <?= date('d/m/Y', strtotime($item['data_lancamento'])) ?>
+                            </td>
                             <td><strong><?= htmlspecialchars($item['departamento_nome']) ?></strong></td>
-                            <td><?= htmlspecialchars($item['produto_nome']) ?></td>
+                            <td class="lanc-produto-cell"><?= htmlspecialchars($item['produto_nome']) ?></td>
                             <td style="text-align: center; font-weight: 600;"><?= $item['quantidade'] ?></td>
                             <td style="text-align: right;" class="cell-currency">
                                 R$ <?= number_format($item['valor_unitario'], 2, ',', '.') ?>
@@ -756,11 +860,16 @@ require_once __DIR__ . '/../includes/header.php';
                             </td>
                             <td><?= htmlspecialchars($item['usuario_nome'] ?? 'Usuário removido', ENT_QUOTES, 'UTF-8') ?></td>
                             <td style="text-align: center;">
-                                <div style="display: inline-flex; gap: 6px;">
+                                <div class="lanc-acoes-normal" style="display: inline-flex; gap: 6px;">
                                     <?php if (usuarioTemPermissao('lancamentos_editar')): ?>
                                     <button type="button" class="btn btn-outline btn-sm btn-icon"
+                                            onclick='iniciarEdicaoLinhaLancamento(<?= htmlspecialchars(json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>)'
+                                            title="Editar data e peça nesta linha" aria-label="Editar data e peça nesta linha">
+                                        📝
+                                    </button>
+                                    <button type="button" class="btn btn-outline btn-sm btn-icon"
                                             onclick='editarLancamentoNoLote(<?= htmlspecialchars(json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8') ?>)'
-                                            title="Editar">
+                                            title="Editar todos os dados no modal" aria-label="Editar todos os dados no modal">
                                         ✏️
                                     </button>
                                     <?php endif; ?>
@@ -781,6 +890,12 @@ require_once __DIR__ . '/../includes/header.php';
                                         <span style="font-size: 0.75rem; color: #94a3b8; font-style: italic;">Apenas leitura</span>
                                     <?php endif; ?>
                                 </div>
+                                <?php if (usuarioTemPermissao('lancamentos_editar')): ?>
+                                <div class="lanc-acoes-edicao" hidden>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="salvarEdicaoLinhaLancamento()">Salvar</button>
+                                    <button type="button" class="btn btn-outline btn-sm" onclick="cancelarEdicaoLinhaLancamento()">Cancelar</button>
+                                </div>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -824,6 +939,16 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     <?php endif; ?>
 </div>
+
+<?php if (usuarioTemPermissao('lancamentos_editar')): ?>
+<form id="formEdicaoLinhaLancamento" method="POST" action="<?= htmlspecialchars($urlAcaoInline, ENT_QUOTES, 'UTF-8') ?>" hidden>
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(tokenCsrfAtual(), ENT_QUOTES, 'UTF-8') ?>">
+    <input type="hidden" name="acao" value="editar_data_peca">
+    <input type="hidden" name="id" id="inline_lancamento_id">
+    <input type="hidden" name="data_lancamento" id="inline_lancamento_data">
+    <input type="hidden" name="produto_id" id="inline_lancamento_produto">
+</form>
+<?php endif; ?>
 
 <!-- Modal de Lançamento em Lote (Multi-Peças por Departamento) -->
 <div class="modal-overlay" id="modalLancamentoLote">
@@ -949,8 +1074,26 @@ require_once __DIR__ . '/../includes/header.php';
 <style>
 #btnAdicionarLinhaLoteTopo[hidden],
 #btnAdicionarLinhaLoteRodape[hidden],
-.lote-remover-item[hidden] {
+.lote-remover-item[hidden],
+.lanc-acoes-normal[hidden],
+.lanc-acoes-edicao[hidden] {
     display: none !important;
+}
+
+.lanc-acoes-edicao {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.lanc-inline-editor {
+    min-width: 130px;
+    width: 100%;
+}
+
+.lanc-inline-editor.lanc-inline-data {
+    min-width: 145px;
 }
 
 .produto-busca-resultados {
@@ -1024,11 +1167,13 @@ require_once __DIR__ . '/../includes/header.php';
     z-index: 1250;
     display: grid;
     grid-template-columns: repeat(10, 1fr);
-    gap: 4px;
+    grid-template-rows: repeat(10, minmax(0, 1fr));
+    gap: 3px;
     width: min(320px, calc(100vw - 24px));
-    max-height: min(300px, calc(100vh - 24px));
-    overflow-y: auto;
-    padding: 10px;
+    height: min(300px, calc(100vh - 24px));
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 8px;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -1040,12 +1185,15 @@ require_once __DIR__ . '/../includes/header.php';
 }
 
 .lote-qtd-grade button {
-    min-height: 28px;
-    padding: 2px;
+    min-height: 0;
+    height: 100%;
+    padding: 0;
     border: 1px solid var(--border-color);
     border-radius: 5px;
     background: var(--bg-card);
     color: var(--text-primary);
+    font-size: 0.78rem;
+    line-height: 1;
     cursor: pointer;
 }
 
@@ -1174,9 +1322,25 @@ function configurarBuscaSelect(input, select, mensagemVazia) {
 document.addEventListener('DOMContentLoaded', function() {
     const selectDepLote = document.getElementById('lote_departamento');
     const buscaDepLote = document.getElementById('buscar_lote_departamento');
+    const selectDepFiltro = document.getElementById('filtro_departamento');
+    const buscaDepFiltro = document.getElementById('buscar_filtro_departamento');
+    const selectProdutoFiltro = document.getElementById('filtro_produto');
+    const buscaProdutoFiltro = document.getElementById('buscar_filtro_produto');
 
     if (selectDepLote && buscaDepLote) {
         configurarBuscaSelect(buscaDepLote, selectDepLote, 'Nenhum departamento encontrado.');
+    }
+    if (selectDepFiltro && buscaDepFiltro) {
+        configurarBuscaSelect(buscaDepFiltro, selectDepFiltro, 'Nenhum departamento encontrado.');
+        if (selectDepFiltro.value) {
+            buscaDepFiltro.value = selectDepFiltro.options[selectDepFiltro.selectedIndex].textContent.trim();
+        }
+    }
+    if (selectProdutoFiltro && buscaProdutoFiltro) {
+        configurarBuscaSelect(buscaProdutoFiltro, selectProdutoFiltro, 'Nenhuma peça encontrada.');
+        if (selectProdutoFiltro.value) {
+            buscaProdutoFiltro.value = selectProdutoFiltro.options[selectProdutoFiltro.selectedIndex].textContent.trim();
+        }
     }
 });
 
@@ -1188,6 +1352,104 @@ const catalogoProdutos = <?= json_encode(array_map(function($p) {
         'valor_padrao' => (float)$p['valor_padrao']
     ];
 }, $produtos)) ?>;
+
+let lancamentoEmEdicaoNaLinha = null;
+
+function formatarDataLancamentoLinha(data) {
+    const partes = data.split('-');
+    return partes.length === 3 ? partes[2] + '/' + partes[1] + '/' + partes[0] : data;
+}
+
+function iniciarEdicaoLinhaLancamento(item) {
+    if (lancamentoEmEdicaoNaLinha) cancelarEdicaoLinhaLancamento();
+
+    const linha = document.getElementById('lancamento_linha_' + item.id);
+    if (!linha) return;
+
+    const celulaData = linha.querySelector('.lanc-data-cell');
+    const celulaProduto = linha.querySelector('.lanc-produto-cell');
+    const dataInput = document.createElement('input');
+    dataInput.type = 'date';
+    dataInput.className = 'form-control lanc-inline-editor lanc-inline-data';
+    dataInput.value = item.data_lancamento;
+    dataInput.setAttribute('aria-label', 'Data do lançamento');
+
+    const buscaProdutoWrapper = document.createElement('div');
+    buscaProdutoWrapper.className = 'produto-busca-wrapper';
+
+    const buscaProduto = document.createElement('input');
+    buscaProduto.type = 'text';
+    buscaProduto.className = 'form-control lanc-inline-editor lanc-inline-produto-busca';
+    buscaProduto.placeholder = 'Digite para pesquisar...';
+    buscaProduto.autocomplete = 'off';
+    buscaProduto.required = true;
+    buscaProduto.setAttribute('role', 'combobox');
+    buscaProduto.setAttribute('aria-autocomplete', 'list');
+    buscaProduto.setAttribute('aria-expanded', 'false');
+    buscaProduto.setAttribute('aria-label', 'Pesquisar peça do lançamento');
+    buscaProduto.id = 'buscar_produto_inline_' + item.id;
+
+    const resultadosProduto = document.createElement('div');
+    resultadosProduto.id = 'resultados_produto_inline_' + item.id;
+    resultadosProduto.className = 'produto-busca-resultados';
+    resultadosProduto.setAttribute('role', 'listbox');
+    resultadosProduto.hidden = true;
+    buscaProduto.setAttribute('aria-controls', resultadosProduto.id);
+    buscaProdutoWrapper.append(buscaProduto, resultadosProduto);
+
+    const produtoSelect = document.createElement('select');
+    produtoSelect.className = 'lanc-inline-produto';
+    produtoSelect.hidden = true;
+    produtoSelect.style.display = 'none';
+    produtoSelect.add(new Option('Selecione uma peça...', ''));
+    catalogoProdutos.forEach(function(produto) {
+        produtoSelect.add(new Option(produto.nome, String(produto.id)));
+    });
+    produtoSelect.value = String(item.produto_id);
+
+    celulaData.replaceChildren(dataInput);
+    celulaProduto.replaceChildren(buscaProdutoWrapper, produtoSelect);
+    configurarBuscaSelect(buscaProduto, produtoSelect, 'Nenhuma peça encontrada.');
+    if (produtoSelect.value) {
+        buscaProduto.value = produtoSelect.options[produtoSelect.selectedIndex].textContent.trim();
+    }
+    linha.querySelector('.lanc-acoes-normal').hidden = true;
+    linha.querySelector('.lanc-acoes-edicao').hidden = false;
+    lancamentoEmEdicaoNaLinha = { item: item, linha: linha };
+    dataInput.focus();
+}
+
+function cancelarEdicaoLinhaLancamento() {
+    if (!lancamentoEmEdicaoNaLinha) return;
+
+    const item = lancamentoEmEdicaoNaLinha.item;
+    const linha = lancamentoEmEdicaoNaLinha.linha;
+    const buscaProduto = linha.querySelector('.lanc-inline-produto-busca');
+    if (buscaProduto) buscaProduto.blur();
+    linha.querySelector('.lanc-data-cell').textContent = formatarDataLancamentoLinha(item.data_lancamento);
+    linha.querySelector('.lanc-produto-cell').textContent = item.produto_nome;
+    linha.querySelector('.lanc-acoes-normal').hidden = false;
+    linha.querySelector('.lanc-acoes-edicao').hidden = true;
+    lancamentoEmEdicaoNaLinha = null;
+}
+
+function salvarEdicaoLinhaLancamento() {
+    if (!lancamentoEmEdicaoNaLinha) return;
+
+    const linha = lancamentoEmEdicaoNaLinha.linha;
+    const data = linha.querySelector('.lanc-inline-data').value;
+    const produtoId = linha.querySelector('.lanc-inline-produto').value;
+
+    if (!data || !produtoId) {
+        alert('Selecione uma data e uma peça antes de salvar.');
+        return;
+    }
+
+    document.getElementById('inline_lancamento_id').value = lancamentoEmEdicaoNaLinha.item.id;
+    document.getElementById('inline_lancamento_data').value = data;
+    document.getElementById('inline_lancamento_produto').value = produtoId;
+    document.getElementById('formEdicaoLinhaLancamento').submit();
+}
 
 let contadorLinhasLote = 0;
 
@@ -1505,10 +1767,9 @@ function validarEnvioLote(event) {
 
     const inputMes = document.getElementById('filtro_mes_hidden');
     const inputData = document.getElementById('filtro_data_hidden');
+    const inputCadastroHoje = document.getElementById('filtro_cadastro_hoje');
     const selectDep = document.getElementById('filtro_departamento');
-    const inputBusca = document.getElementById('filtro_busca');
-
-    let timerBusca = null;
+    const selectProduto = document.getElementById('filtro_produto');
 
     // Departamento é aplicado imediatamente
     if (selectDep) {
@@ -1516,22 +1777,9 @@ function validarEnvioLote(event) {
             form.submit();
         });
     }
-
-    // Busca com pequeno atraso para não recarregar a cada tecla
-    if (inputBusca) {
-        inputBusca.addEventListener('input', function () {
-            clearTimeout(timerBusca);
-            timerBusca = setTimeout(function () {
-                form.submit();
-            }, 650);
-        });
-
-        inputBusca.addEventListener('keydown', function (event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                clearTimeout(timerBusca);
-                form.submit();
-            }
+    if (selectProduto) {
+        selectProduto.addEventListener('change', function () {
+            form.submit();
         });
     }
 
@@ -1612,7 +1860,7 @@ function validarEnvioLote(event) {
     async function carregarDiasDoMes(mes) {
         const params = new URLSearchParams({ ajax: 'dias', cal_mes: mes });
         if (selectDep && selectDep.value) params.set('departamento_id', selectDep.value);
-        if (inputBusca && inputBusca.value.trim()) params.set('busca', inputBusca.value.trim());
+        if (selectProduto && selectProduto.value) params.set('produto_id', selectProduto.value);
 
         try {
             const resposta = await fetch('lancamentos.php?' + params.toString(), {
@@ -1641,7 +1889,6 @@ function validarEnvioLote(event) {
     }
 
     function abrirCalendario() {
-        clearTimeout(timerBusca);
         popover.hidden = false;
         trigger.classList.add('active');
         trigger.setAttribute('aria-expanded', 'true');
@@ -1677,24 +1924,35 @@ function validarEnvioLote(event) {
 
         inputData.value = botaoDia.getAttribute('data-data');
         inputMes.value = '';
+        inputCadastroHoje.value = '';
         form.submit();
     });
 
     document.getElementById('calMesInteiro').addEventListener('click', function () {
         inputData.value = '';
         inputMes.value = estado.mes;
+        inputCadastroHoje.value = '';
         form.submit();
     });
 
     document.getElementById('calTodoPeriodo').addEventListener('click', function () {
         inputData.value = '';
         inputMes.value = '';
+        inputCadastroHoje.value = '';
+        form.submit();
+    });
+
+    document.getElementById('calCadastroHoje').addEventListener('click', function () {
+        inputData.value = '';
+        inputMes.value = '';
+        inputCadastroHoje.value = '1';
         form.submit();
     });
 
     document.getElementById('calHoje').addEventListener('click', function () {
         inputData.value = hojeISO;
         inputMes.value = '';
+        inputCadastroHoje.value = '';
         form.submit();
     });
 
