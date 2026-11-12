@@ -61,7 +61,7 @@ $stmtLancamentos = $pdo->query("
     SELECT l.*, 
            COALESCE(d.nome, l.departamento_nome_snapshot, 'Setor Removido') AS departamento_nome, 
            COALESCE(p.nome, l.produto_nome_snapshot, 'Peça Removida') AS produto_nome,
-           CAST((julianday('now') - julianday(l.deleted_at)) AS INTEGER) as dias_passados
+           TIMESTAMPDIFF(DAY, l.deleted_at, CURRENT_TIMESTAMP) as dias_passados
     FROM lancamentos l
     LEFT JOIN departamentos d ON d.id = l.departamento_id
     LEFT JOIN produtos p ON p.id = l.produto_id
@@ -72,7 +72,7 @@ $lancamentosDeletados = $stmtLancamentos->fetchAll();
 
 // Departamentos Deletados
 $stmtDeps = $pdo->query("
-    SELECT *, CAST((julianday('now') - julianday(deleted_at)) AS INTEGER) as dias_passados
+    SELECT *, TIMESTAMPDIFF(DAY, deleted_at, CURRENT_TIMESTAMP) as dias_passados
     FROM departamentos
     WHERE deleted_at IS NOT NULL
     ORDER BY deleted_at DESC
@@ -81,7 +81,7 @@ $departamentosDeletados = $stmtDeps->fetchAll();
 
 // Produtos Deletados
 $stmtProds = $pdo->query("
-    SELECT *, CAST((julianday('now') - julianday(deleted_at)) AS INTEGER) as dias_passados
+    SELECT *, TIMESTAMPDIFF(DAY, deleted_at, CURRENT_TIMESTAMP) as dias_passados
     FROM produtos
     WHERE deleted_at IS NOT NULL
     ORDER BY deleted_at DESC
