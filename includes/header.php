@@ -16,7 +16,7 @@ $temaHtml        = $temaUsuario === 'escuro' ? 'dark' : 'light';
     <meta name="color-scheme" content="<?= $temaHtml === 'dark' ? 'dark' : 'light' ?>">
     <meta name="theme-color" content="<?= $temaHtml === 'dark' ? '#0b1120' : '#f4f6fa' ?>">
     <title><?= isset($pageTitle) ? htmlspecialchars($pageTitle) . ' - ' : '' ?><?= htmlspecialchars($sysNomeHeader) ?></title>
-    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="stylesheet" href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 </head>

@@ -426,6 +426,15 @@ body {
     gap: 16px;
 }
 
+.dashboard-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    padding: 10px 0;
+    background: var(--bg-main);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
 .page-title-group h1 {
     font-size: 1.65rem;
     font-weight: 800;
@@ -1746,6 +1755,10 @@ body {
     .topbar-mobile {
         margin: 4px 0 16px;
         border-radius: 10px;
+    }
+
+    .dashboard-sticky-header {
+        top: 72px;
     }
 
     .topbar-mobile > div {

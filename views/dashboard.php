@@ -244,7 +244,7 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <!-- ═══════════════════════════════════════════════════════════════ CABEÇALHO -->
-<div class="page-header">
+<div class="page-header dashboard-sticky-header">
     <div class="page-title-group">
         <h1>📊 Dashboard</h1>
         <p>
